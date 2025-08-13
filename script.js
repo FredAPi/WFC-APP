@@ -199,7 +199,7 @@ async function renderDashboard(){
   if(!verifs.length) histCard.innerHTML+='<div>Aucun audit.</div>'; 
   else verifs.slice(0,6).forEach(v=>{ 
     const row=document.createElement('div'); row.className='row'; 
-    row.textContent=`${v.date} — ${v.verificateur} (${v.periode_couverte||''})`; 
+    row.textContent=`${v.date ? toFR(v.date) : '—'} — ${v.verificateur} (${v.periode_couverte||''})`; 
     histCard.appendChild(row); 
   });
 
@@ -655,7 +655,7 @@ async function renderHistoryList(){
   data.forEach(v => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${v.date || '—'}</td>
+      <td>${v.date ? toFR(v.date) : '—'}</td>
       <td>${v.periode_couverte || '—'}</td>
       <td>${v.verificateur || '—'}</td>
       <td class="muted">${(v.commentaire || '').slice(0,80)}</td>`;
@@ -686,7 +686,7 @@ async function renderHistoryDetail(verificationId){
   const header = document.createElement('div');
   header.className = 'history-header';
   const title = document.createElement('h2');
-  title.textContent = `Audit du ${data?.date || '—'} — ${selectedStore}`;
+  title.textContent = `Audit du ${data?.date ? toFR(data.date) : '—'} — ${selectedStore}`;
   const back = document.createElement('button');
   back.className = 'ghost-button';
   back.textContent = "← Retour à l'historique";
@@ -707,7 +707,7 @@ async function renderHistoryDetail(verificationId){
   meta.innerHTML = `
     <h3>Infos</h3>
     <div class="meta-grid">
-      <div><div class="label">Date</div><div>${data.date || '—'}</div></div>
+      <div><div class="label">Date</div><div>${data.date ? toFR(data.date) : '—'}</div></div>
       <div><div class="label">Période couverte</div><div>${data.periode_couverte || '—'}</div></div>
       <div><div class="label">Vérificateur</div><div>${data.verificateur || '—'}</div></div>
     </div>`;
