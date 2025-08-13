@@ -138,7 +138,12 @@ async function renderDashboard(){
   const content=document.createElement('section'); content.className='content';
   const tAud=document.createElement('div'); tAud.className='tile'; tAud.innerHTML='<h3>Audits réalisés</h3><div class="big">'+verifs.length+'</div>';
   const tErr=document.createElement('div'); tErr.className='tile'; tErr.innerHTML='<h3>Erreurs récurrentes</h3>'+ (errorsTop.length? '<ul>'+errorsTop.map(e=>`<li>${e.label} — <b>${e.count}</b></li>`).join('')+'</ul>':'<div>—</div>');
-  content.append(tAud,tErr);
+  const tDocs=document.createElement('div'); 
+  tDocs.className='tile';
+  tDocs.innerHTML='<h3>Documents ICC</h3><div class="muted">Consulter & imprimer</div>';
+  tDocs.style.cursor='pointer';
+  tDocs.onclick=()=>renderDocs();
+  content.append(tAud,tErr,tDocs);
 
   // Calendar
   const cal=document.createElement('div'); cal.className='card calendar';
@@ -369,6 +374,18 @@ function renderChecklist(meta){
   activeCats.forEach(cat=>{
     const row = document.createElement('div'); row.className='result-row';
     const t = document.createElement('div'); t.className='res-title'; t.textContent = cat.nom_categorie;
+    if(cat.description){
+      const infoWrap = document.createElement('span');
+      infoWrap.className='info-wrap';
+      const info = document.createElement('span'); info.className='info-icon'; info.textContent='ℹ️';
+      const tip = document.createElement('div'); tip.className='tooltip'; tip.textContent = cat.description || '';
+infoWrap.appendChild(info); infoWrap.appendChild(tip);
+      const toggle = ()=> tip.classList.toggle('show');
+      info.addEventListener('mouseenter', ()=> tip.classList.add('show'));
+      info.addEventListener('mouseleave', ()=> tip.classList.remove('show'));
+      info.addEventListener('click', toggle);
+      t.appendChild(infoWrap);
+    }
     const control = document.createElement('div'); control.style.display='flex'; control.style.gap='10px'; control.style.flexWrap='wrap';
 
     const ok = document.createElement('button'); ok.type='button'; ok.textContent='✅ Conforme'; ok.className='ghost-button';
@@ -414,10 +431,16 @@ function renderChecklist(meta){
       commentaire: ''
     };
 
-    const { error } = await supabase.from('verifications').insert([payload]);
-    if(error){
-      alert("Échec de l'enregistrement dans Supabase.");
-      console.error(error);
+    const fnUrl = 'https://vhgfjnnwhwglirnkvacz.supabase.co/functions/v1/create_verif';
+    const res = await fetch(fnUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok){
+      const err = await res.json().catch(()=>({}));
+      alert("Échec de l'enregistrement : " + (err.error || res.status));
+      console.error(err);
       return;
     }
 
@@ -426,6 +449,54 @@ function renderChecklist(meta){
   };
 }
 
+
+// ---- Documents ICC
+const DOCS = (window.DOCS || []); // à remplir plus tard [{title, url}]
+
+function renderDocs(){
+  appState = APP.VIEW; 
+  app.innerHTML='';
+  const wrap = document.createElement('div'); 
+  wrap.className = 'history-wrap';
+
+  const header = document.createElement('div');
+  header.className = 'history-header';
+  const title = document.createElement('h2'); title.textContent = 'Documents ICC';
+  const back = document.createElement('button'); back.className='ghost-button'; back.textContent='← Retour';
+  back.onclick = ()=>renderDashboard();
+  header.append(title, back);
+  wrap.appendChild(header);
+
+  const list = document.createElement('div');
+  list.className = 'doc-list';
+
+  if(!DOCS.length){
+    const empty = document.createElement('div');
+    empty.className='muted';
+    empty.textContent = 'Aucun document défini pour le moment.';
+    list.appendChild(empty);
+  } else {
+    DOCS.forEach(d => {
+      const row = document.createElement('div');
+      row.className='doc-row';
+      const name = document.createElement('div'); name.className='doc-name'; name.textContent = d.title || 'Document';
+      const actions = document.createElement('div'); actions.className='doc-actions';
+
+      const openBtn = document.createElement('button'); openBtn.className='ghost-button'; openBtn.textContent='Ouvrir';
+      openBtn.onclick = ()=>{ if(d.url) window.open(d.url, '_blank'); };
+
+      const printBtn = document.createElement('button'); printBtn.className='ghost-button'; printBtn.textContent='Imprimer';
+      printBtn.onclick = ()=>{ if(d.url){ const w=window.open(d.url, '_blank'); if(w){ w.addEventListener('load', ()=>{ try{ w.print(); }catch(e){} }); } } };
+
+      actions.append(openBtn, printBtn);
+      row.append(name, actions);
+      list.appendChild(row);
+    });
+  }
+
+  wrap.appendChild(list);
+  app.appendChild(wrap);
+}
 // ---- History list
 async function renderHistoryList(){
   appState = APP.HIST;
