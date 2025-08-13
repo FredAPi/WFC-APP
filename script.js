@@ -431,16 +431,10 @@ infoWrap.appendChild(info); infoWrap.appendChild(tip);
       commentaire: ''
     };
 
-    const fnUrl = 'https://vhgfjnnwhwglirnkvacz.supabase.co/functions/v1/create_verif';
-    const res = await fetch(fnUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if(!res.ok){
-      const err = await res.json().catch(()=>({}));
-      alert("Échec de l'enregistrement : " + (err.error || res.status));
-      console.error(err);
+    const { error } = await supabase.from('verifications').insert([payload]);
+    if(error){
+      alert("Échec de l'enregistrement dans Supabase.");
+      console.error(error);
       return;
     }
 
