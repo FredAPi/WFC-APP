@@ -38,6 +38,18 @@ async function fetchVerifs(storeId){
   return data||[];
 }
 
+
+// French date formatting helpers
+const FR_DAYS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+const FR_MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+function formatLongFR(d){
+  const dt = new Date(d+'T12:00:00');
+  const day = FR_DAYS[dt.getDay()];
+  const dd = String(dt.getDate()).padStart(2,'0');
+  const mmName = FR_MONTHS[dt.getMonth()];
+  const yyyy = dt.getFullYear();
+  return `${day} ${dd} ${mmName} ${yyyy}`;
+}
 // date utils
 function parseFRDate(str){ const [d,m,y]=str.split('/').map(n=>parseInt(n,10)); return new Date(y,m-1,d); }
 function ymd(d){ const z=new Date(d); z.setHours(12); return z.toISOString().slice(0,10); }
@@ -56,6 +68,33 @@ function computeCoveredDays(verifs){
     daysBetween(d1,d2).forEach(d=>set.add(d));
   });
   return set;
+}
+
+
+function computeErrorDays(verifs){
+  const set = new Set();
+  const map = new Map(); // dateString => [verificationId,...]
+  (verifs||[]).forEach(v=>{
+    const per=v.periode_couverte||'';
+    const m=per.match(/du\s(\d{2}\/\d{2}\/\d{4})\sau\s(\d{2}\/\d{2}\/\d{4})/);
+    const d1 = m ? parseFRDate(m[1]) : null;
+    const d2 = m ? parseFRDate(m[2]) : null;
+    const results = v.resultats || {};
+    Object.values(results).forEach(val=>{
+      if(val && val.status === 'error' && val.errorDate){
+        const ds = val.errorDate; // YYYY-MM-DD
+        const d = new Date(ds);
+        const inRange = (!d1 || !d2) ? true : (d >= d1 && d <= d2);
+        if(inRange){
+          set.add(ds);
+          const arr = map.get(ds) || [];
+          if(!arr.includes(v.id)) arr.push(v.id);
+          map.set(ds, arr);
+        }
+      }
+    });
+  });
+  return { set, map };
 }
 function recurringErrors(verifs){
   const counts={};
@@ -120,6 +159,7 @@ async function renderDashboard(){
 
   const verifs = await fetchVerifs(selectedStoreId);
   const covered = computeCoveredDays(verifs);
+  const { set: errorDays, map: errorDateMap } = computeErrorDays(verifs);
   const errorsTop = recurringErrors(verifs);
 
   const container=document.createElement('div'); container.className='container';
@@ -151,7 +191,7 @@ async function renderDashboard(){
   const calBody=document.createElement('div'); 
   cal.append(calHead,calBody);
   // Légende
-  const legend=document.createElement('div'); legend.className='calendar-legend'; legend.innerHTML='<span class="legend-dot"></span> Jour contrôlé'; 
+  const legend=document.createElement('div'); legend.className='calendar-legend'; legend.innerHTML='<span class="legend-dot legend-covered"></span> Jour contrôlé <span class="legend-dot legend-error"></span> Erreur détectée'; 
   cal.appendChild(legend);
 
   // History (teaser)
@@ -194,7 +234,19 @@ async function renderDashboard(){
           const ds=`${y}-${String(m+1).padStart(2,'0')}-${d}`; 
           const span=document.createElement('span'); 
           span.textContent=d; 
-          if(covered.has(ds)) td.classList.add('day-covered'); 
+          if(covered.has(ds)) td.classList.add('day-covered');
+          if(errorDays.has(ds)) { 
+            td.classList.add('day-error'); 
+            const arr = (errorDateMap && errorDateMap.get) ? errorDateMap.get(ds) : null;
+            if(arr && arr.length){
+              td.classList.add('clickable');
+              td.title = 'Voir le contrôle du ' + ds;
+              td.addEventListener('click', ()=>{
+                if(arr.length===1) renderHistoryDetail(arr[0]); 
+                else renderHistoryList(); 
+              });
+            }
+          } 
           td.appendChild(span); 
           day++; 
         }
@@ -259,11 +311,14 @@ async function renderPreCheck(){
   back.className = 'ghost-button';
   back.textContent = '← Retour';
   back.onclick = ()=>renderDashboard();
+  /* removed back-precheck */
+  /* removed alignBack */
+
   header.append(title, back);
   wrap.appendChild(header);
 
   const card = document.createElement('div');
-  card.className = 'card';
+  card.className = 'card pre-card';
   const cardInner = document.createElement('div');
   cardInner.className = 'meta-grid';
 
@@ -271,19 +326,19 @@ async function renderPreCheck(){
   const colDate = document.createElement('div');
   colDate.innerHTML = '<div class="label">Date d\'audit</div>';
   const dateInput = document.createElement('input');
-  dateInput.type='date'; dateInput.value = dateISO;
+  dateInput.type='date'; dateInput.value = dateISO; dateInput.className='input-pill';
   colDate.appendChild(dateInput);
   cardInner.appendChild(colDate);
 
   // Period (non editable) displayed as badges
   const colFrom = document.createElement('div');
-  colFrom.innerHTML = '<div class="label">Période du</div>';
+  colFrom.innerHTML = '<div class="label label-period">Période du</div>';
   const fromBadge = toBadge(per.startFR);
   colFrom.appendChild(fromBadge);
   cardInner.appendChild(colFrom);
 
   const colTo = document.createElement('div');
-  colTo.innerHTML = '<div class="label">au</div>';
+  colTo.innerHTML = '<div class="label label-period">au</div>';
   const toBadgeEl = toBadge(per.endFR);
   colTo.appendChild(toBadgeEl);
   cardInner.appendChild(colTo);
@@ -292,7 +347,7 @@ async function renderPreCheck(){
   const colWho = document.createElement('div');
   colWho.innerHTML = '<div class="label">Vérificateur</div>';
   const whoInput = document.createElement('input');
-  whoInput.type='text'; whoInput.placeholder='Votre prénom';
+  whoInput.type='text'; whoInput.placeholder='Votre prénom'; whoInput.className='input-pill';
   colWho.appendChild(whoInput);
   cardInner.appendChild(colWho);
 
@@ -362,6 +417,9 @@ function renderChecklist(meta){
   back.className = 'ghost-button';
   back.textContent = '← Annuler';
   back.onclick = ()=>renderDashboard();
+  /* removed back-precheck */
+  /* removed alignBack */
+
   header.append(title, back);
   wrap.appendChild(header);
 
@@ -393,14 +451,49 @@ infoWrap.appendChild(info); infoWrap.appendChild(tip);
     const comment = document.createElement('input'); comment.type='text'; comment.placeholder='Commentaire (optionnel)'; comment.style.flex='1';
 
     let status = null;
-    const setSel = (s)=>{ status=s; ok.style.background = s==='done' ? '#e8f7ef' : '#fff'; ko.style.background = s==='error' ? '#fff0f0' : '#fff'; };
+    const setSel = (s)=>{ 
+      status=s; 
+      ok.style.background = s==='done' ? '#f0fff4' : '#fff'; 
+      ko.style.background = s==='error' ? '#fff0f0' : '#fff'; 
+      dateWrap.style.display = s==='error' ? 'block' : 'none';
+    };
     ok.onclick = ()=>setSel('done'); ko.onclick = ()=>setSel('error');
 
-    control.append(ok, ko, comment);
+    
+    // Date d'erreur (affichée uniquement si 'Non conforme')
+    const dateWrap = document.createElement('div');
+    dateWrap.style.display='none';
+    dateWrap.style.marginTop='8px';
+
+    const labelDate = document.createElement('div');
+    labelDate.textContent = 'Jour de détection (dans la période)';
+    labelDate.style.fontSize='12px';
+    labelDate.style.color='#475569';
+    labelDate.style.marginBottom='4px';
+
+    const dateSelect = document.createElement('select'); dateSelect.style.width='100%';
+    (function(){
+      const m = (meta.periode||'').match(/du\s(\d{2}\/\d{2}\/\d{4})\sau\s(\d{2}\/\d{2}\/\d{4})/);
+      let start=null,end=null; if(m){ start = parseFRDate(m[1]); end = parseFRDate(m[2]); }
+      const options = start&&end ? daysBetween(start,end) : [meta.date];
+      options.forEach(d=>{ 
+        const opt=document.createElement('option'); 
+        opt.value=d; 
+        const label = new Date(d).toLocaleDateString('fr-FR',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+        opt.textContent = label.charAt(0).toUpperCase()+label.slice(1);
+        dateSelect.appendChild(opt); 
+      });
+      dateSelect.value = (options.includes(meta.date) ? meta.date : options[0]);
+    })();
+
+    dateWrap.append(labelDate, dateSelect);
+
+    control.append(ok, ko, comment, dateWrap);
+    
     row.append(t, control);
     form.appendChild(row);
 
-    fields.push({ id: cat.id, get: ()=>({ status, comment: comment.value?.trim() }) });
+    fields.push({ id: cat.id, get: ()=>({ status, comment: comment.value?.trim(), errorDate: (status==='error'? dateSelect.value : undefined) }) });
   });
 
   const bottom = document.createElement('div');
@@ -465,6 +558,9 @@ function renderDocs(){
   const title = document.createElement('h2'); title.textContent = 'Documents ICC';
   const back = document.createElement('button'); back.className='ghost-button'; back.textContent='← Retour';
   back.onclick = ()=>renderDashboard();
+  /* removed back-precheck */
+  /* removed alignBack */
+
   header.append(title, back);
   wrap.appendChild(header);
 
