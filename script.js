@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 // ---- Supabase
@@ -16,9 +17,45 @@ let selectedStoreId = null;
 
 const app = document.getElementById('app');
 
+// ---- UI helpers (mobile sheet)
+function isMobile(){ return window.matchMedia && window.matchMedia('(max-width: 640px)').matches; }
+
+function openInfoSheet(titleText, bodyHtml){
+  // backdrop
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  backdrop.addEventListener('click', ()=> close());
+  // sheet
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  sheet.innerHTML = `
+    <div class="sheet-header">
+      <div class="sheet-title">${titleText || 'Informations'}</div>
+      <button class="sheet-close" type="button" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">${bodyHtml || ''}</div>`;
+  sheet.querySelector('.sheet-close').addEventListener('click', ()=> close());
+
+  function close(){
+    document.body.classList.remove('no-scroll');
+    backdrop.remove();
+    sheet.remove();
+  }
+
+  document.body.classList.add('no-scroll');
+  document.body.appendChild(backdrop);
+  document.body.appendChild(sheet);
+  // animate in
+  requestAnimationFrame(()=>{
+    backdrop.classList.add('show');
+    sheet.classList.add('show');
+  });
+}
+
+
 // ---- Helpers
-const getStoreId = (name)=> { const f = storeList.find(s=>s.name===name); return f ? f.id : null; };
-const getStoreCode = (name)=> { const f = storeList.find(s=>s.name===name); return f ? f.code : ''; };
+const getStoreId   = (name)=> (storeList.find(s=>s.name===name)?.id ?? null);
+const getStoreCode = (name)=> (storeList.find(s=>s.name===name)?.code ?? '');
 
 async function fetchStores(){
   const { data } = await supabase.from('boutiques').select('*').order('nom');
@@ -70,7 +107,6 @@ function computeCoveredDays(verifs){
 }
 
 
-// NEW: support multiple error dates (errorDates array) while keeping backwards compat with errorDate
 function computeErrorDays(verifs){
   const set = new Set();
   const map = new Map(); // dateString => [verificationId,...]
@@ -81,13 +117,8 @@ function computeErrorDays(verifs){
     const d2 = m ? parseFRDate(m[2]) : null;
     const results = v.resultats || {};
     Object.values(results).forEach(val=>{
-      if(!val || val.status !== 'error') return;
-      // Collect one or many dates
-      let dates = [];
-      if (Array.isArray(val.errorDates)) dates = val.errorDates;
-      else if (val.errorDate) dates = [val.errorDate];
-      dates.forEach(ds=>{
-        if(!ds) return;
+      if(val && val.status === 'error' && val.errorDate){
+        const ds = val.errorDate; // YYYY-MM-DD
         const d = new Date(ds);
         const inRange = (!d1 || !d2) ? true : (d >= d1 && d <= d2);
         if(inRange){
@@ -96,7 +127,7 @@ function computeErrorDays(verifs){
           if(!arr.includes(v.id)) arr.push(v.id);
           map.set(ds, arr);
         }
-      });
+      }
     });
   });
   return { set, map };
@@ -172,7 +203,7 @@ async function renderDashboard(){
 
   // Sidebar
   const side=document.createElement('aside'); side.className='sidebar';
-  side.innerHTML = `<div class="store-name" style="margin-bottom:12px; text-align:center;">${selectedStore.toUpperCase()}</div>`;
+  side.innerHTML=`<div class="store-name">${selectedStore}</div><div class="store-code">ID: ${selectedStoreId}</div>`;
   const menu=document.createElement('div'); menu.className='menu';
   const bStart=document.createElement('button'); bStart.className='primary-lg'; bStart.textContent='Commencer un audit';
   const bHist=document.createElement('button');  bHist.className='ghost-button';  bHist.textContent="Voir l'historique";
@@ -316,6 +347,8 @@ async function renderPreCheck(){
   back.className = 'ghost-button';
   back.textContent = '← Retour';
   back.onclick = ()=>renderDashboard();
+  /* removed back-precheck */
+  /* removed alignBack */
 
   header.append(title, back);
   wrap.appendChild(header);
@@ -327,7 +360,7 @@ async function renderPreCheck(){
 
   // Audit date (modifiable)
   const colDate = document.createElement('div');
-  colDate.innerHTML = "<div class='label'>Date d'audit</div>";
+  colDate.innerHTML = '<div class="label">Date d\'audit</div>';
   const dateInput = document.createElement('input');
   dateInput.type='date'; dateInput.value = dateISO; dateInput.className='input-pill';
   colDate.appendChild(dateInput);
@@ -420,6 +453,8 @@ function renderChecklist(meta){
   back.className = 'ghost-button';
   back.textContent = '← Annuler';
   back.onclick = ()=>renderDashboard();
+  /* removed back-precheck */
+  /* removed alignBack */
 
   header.append(title, back);
   wrap.appendChild(header);
@@ -433,18 +468,33 @@ function renderChecklist(meta){
   activeCats.forEach(cat=>{
     const row = document.createElement('div'); row.className='result-row';
     const t = document.createElement('div'); t.className='res-title'; t.textContent = cat.nom_categorie;
-    if(cat.description){
+    
+if(cat.description){
       const infoWrap = document.createElement('span');
       infoWrap.className='info-wrap';
       const info = document.createElement('span'); info.className='info-icon'; info.textContent='ℹ️';
       const tip = document.createElement('div'); tip.className='tooltip'; tip.textContent = cat.description || '';
       infoWrap.appendChild(info); infoWrap.appendChild(tip);
-      const toggle = ()=> tip.classList.toggle('show');
-      info.addEventListener('mouseenter', ()=> tip.classList.add('show'));
-      info.addEventListener('mouseleave', ()=> tip.classList.remove('show'));
-      info.addEventListener('click', toggle);
+
+      if(isMobile()){
+        // On mobile: open a full-screen sheet on tap
+        info.addEventListener('click', (e)=>{
+          e.preventDefault();
+          e.stopPropagation();
+          const titleTxt = cat.nom_categorie || 'Informations';
+          const html = `<div class="tip-lines">${(cat.description || '').replace(/\n/g,'<br>')}</div>`;
+          openInfoSheet(titleTxt, html);
+        });
+      } else {
+        // Desktop: keep classic tooltip on hover/click
+        const toggle = ()=> tip.classList.toggle('show');
+        info.addEventListener('mouseenter', ()=> tip.classList.add('show'));
+        info.addEventListener('mouseleave', ()=> tip.classList.remove('show'));
+        info.addEventListener('click', toggle);
+      }
+
       t.appendChild(infoWrap);
-    }
+  }
     const control = document.createElement('div'); control.style.display='flex'; control.style.gap='10px'; control.style.flexWrap='wrap';
 
     const ok = document.createElement('button'); ok.type='button'; ok.textContent='✅ Conforme'; ok.className='ghost-button';
@@ -452,21 +502,28 @@ function renderChecklist(meta){
     const comment = document.createElement('input'); comment.type='text'; comment.placeholder='Commentaire (optionnel)'; comment.style.flex='1';
 
     let status = null;
-    const dateWrap = document.createElement('div'); // will contain multi-date UI
-    const dateList = document.createElement('div'); // container for selects
-    const addBtn = document.createElement('button'); addBtn.type='button'; addBtn.textContent='+ Ajouter un jour'; addBtn.className='ghost-button';
+    const setSel = (s)=>{ 
+      status=s; 
+      ok.style.background = s==='done' ? '#f0fff4' : '#fff'; 
+      ko.style.background = s==='error' ? '#fff0f0' : '#fff'; 
+      dateWrap.style.display = s==='error' ? 'block' : 'none';
+    };
+    ok.onclick = ()=>setSel('done'); ko.onclick = ()=>setSel('error');
+
+    
+    // Date d'erreur (affichée uniquement si 'Non conforme')
+    const dateWrap = document.createElement('div');
     dateWrap.style.display='none';
     dateWrap.style.marginTop='8px';
-    dateWrap.appendChild(dateList);
-    dateWrap.appendChild(addBtn);
 
-    // helper to build a date <select> with options from period
-    const buildDateSelect = ()=>{
-      const container = document.createElement('div');
-      container.style.display = 'flex';
-      container.style.gap = '6px';
-      container.style.alignItems = 'center';
-      const select = document.createElement('select'); select.style.flex='1'; select.style.marginBottom='6px';
+    const labelDate = document.createElement('div');
+    labelDate.textContent = 'Jour de détection (dans la période)';
+    labelDate.style.fontSize='12px';
+    labelDate.style.color='#475569';
+    labelDate.style.marginBottom='4px';
+
+    const dateSelect = document.createElement('select'); dateSelect.style.width='100%';
+    (function(){
       const m = (meta.periode||'').match(/du\s(\d{2}\/\d{2}\/\d{4})\sau\s(\d{2}\/\d{2}\/\d{4})/);
       let start=null,end=null; if(m){ start = parseFRDate(m[1]); end = parseFRDate(m[2]); }
       const options = start&&end ? daysBetween(start,end) : [meta.date];
@@ -475,67 +532,19 @@ function renderChecklist(meta){
         opt.value=d; 
         const label = new Date(d).toLocaleDateString('fr-FR',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
         opt.textContent = label.charAt(0).toUpperCase()+label.slice(1);
-        select.appendChild(opt); 
+        dateSelect.appendChild(opt); 
       });
-      // default value
-      select.value = options.includes(meta.date) ? meta.date : options[0];
+      dateSelect.value = (options.includes(meta.date) ? meta.date : options[0]);
+    })();
 
-      // delete button
-      const delBtn = document.createElement('button');
-      delBtn.type = 'button';
-      delBtn.textContent = '🗑';
-      delBtn.className = 'ghost-button';
-      delBtn.style.padding = '4px 8px';
-      delBtn.onclick = ()=> container.remove();
-
-      container.appendChild(select);
-      container.appendChild(delBtn);
-      return container;
-    };
-
-    // add first select on demand and allow adding more
-    const ensureAtLeastOne = ()=>{
-      if(!dateList.querySelector('select')){
-        dateList.appendChild(buildDateSelect());
-      }
-    };
-    addBtn.onclick = ()=>{ dateList.appendChild(buildDateSelect()); };
-
-    const setSel = (s)=>{ 
-      status=s; 
-      ok.style.background = s==='done' ? '#f0fff4' : '#fff'; 
-      ko.style.background = s==='error' ? '#fff0f0' : '#fff'; 
-      dateWrap.style.display = s==='error' ? 'block' : 'none';
-      if(s==='error') ensureAtLeastOne();
-    };
-    ok.onclick = ()=>setSel('done'); ko.onclick = ()=>setSel('error');
-
-    // Label above date selects
-    const labelDate = document.createElement('div');
-    labelDate.textContent = 'Jours de détection (dans la période)';
-    labelDate.style.fontSize='12px';
-    labelDate.style.color='#475569';
-    labelDate.style.margin='8px 0 4px';
-    dateWrap.prepend(labelDate);
+    dateWrap.append(labelDate, dateSelect);
 
     control.append(ok, ko, comment, dateWrap);
     
     row.append(t, control);
     form.appendChild(row);
 
-    fields.push({ 
-      id: cat.id, 
-      get: ()=>{
-        const base = { status, comment: (comment.value || "").trim() };
-        if(status==='error'){
-          const values = Array.from(dateList.querySelectorAll('select')).map(s=>s.value).filter(Boolean);
-          // de-dupe while keeping order
-          const seen = new Set(); const dates = values.filter(v=> (seen.has(v)?false:(seen.add(v),true)));
-          return { ...base, errorDates: dates, errorDate: dates[0] }; // keep first for backward compat
-        }
-        return base;
-      } 
-    });
+    fields.push({ id: cat.id, get: ()=>({ status, comment: comment.value?.trim(), errorDate: (status==='error'? dateSelect.value : undefined) }) });
   });
 
   const bottom = document.createElement('div');
@@ -579,6 +588,7 @@ function renderChecklist(meta){
       return;
     }
 
+
     alert('Vérification enregistrée ✅');
     renderDashboard();
   };
@@ -599,6 +609,8 @@ function renderDocs(){
   const title = document.createElement('h2'); title.textContent = 'Documents ICC';
   const back = document.createElement('button'); back.className='ghost-button'; back.textContent='← Retour';
   back.onclick = ()=>renderDashboard();
+  /* removed back-precheck */
+  /* removed alignBack */
 
   header.append(title, back);
   wrap.appendChild(header);
@@ -694,10 +706,10 @@ async function renderHistoryList(){
   data.forEach(v => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${v.date ? toFR(v.date) : '—'}</td>
-      <td>${v.periode_couverte || '—'}</td>
-      <td>${v.verificateur || '—'}</td>
-      <td class="muted">${(v.commentaire || '').slice(0,80)}</td>`;
+      <td data-label="Date">${v.date ? toFR(v.date) : '—'}</td>
+      <td data-label="Période couverte">${v.periode_couverte || '—'}</td>
+      <td data-label="Vérificateur">${v.verificateur || '—'}</td>
+      <td data-label="Commentaires" class="muted">${(v.commentaire || '').slice(0,80)}</td>`;
     tr.style.cursor = 'pointer';
     tr.onclick = () => renderHistoryDetail(v.id);
     tbody.appendChild(tr);
@@ -725,7 +737,7 @@ async function renderHistoryDetail(verificationId){
   const header = document.createElement('div');
   header.className = 'history-header';
   const title = document.createElement('h2');
-  title.textContent = `Audit du ${(data && data.date) ? toFR(data.date) : '—'} — ${selectedStore}`;
+  title.textContent = `Audit du ${data?.date ? toFR(data.date) : '—'} — ${selectedStore}`;
   const back = document.createElement('button');
   back.className = 'ghost-button';
   back.textContent = "← Retour à l'historique";
@@ -772,21 +784,7 @@ async function renderHistoryDetail(verificationId){
       if (val && val.status === 'done')  badge = '✅ Conforme';
       else if (val && val.status === 'error') badge = '❌ Non conforme';
       const comment = (val && val.comment) ? `<div class="comment">${val.comment}</div>` : '';
-
-      // NEW: show multiple error dates if present
-      let dateInfo = '';
-      if (val && val.status === 'error'){
-        const dates = Array.isArray(val.errorDates) ? val.errorDates : (val.errorDate ? [val.errorDate] : []);
-        if (dates.length){
-          const human = dates.map(d => {
-            const label = new Date(d).toLocaleDateString('fr-FR',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
-            return label.charAt(0).toUpperCase()+label.slice(1);
-          }).join(', ');
-          dateInfo = `<div class="comment">Jours concernés: ${human}</div>`;
-        }
-      }
-
-      line.innerHTML = `<div class="res-title">${label}</div><div class="res-badge">${badge}</div>${dateInfo}${comment}`;
+      line.innerHTML = `<div class="res-title">${label}</div><div class="res-badge">${badge}</div>${comment}`;
       list.appendChild(line);
     });
   }
