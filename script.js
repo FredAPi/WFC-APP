@@ -1,12 +1,27 @@
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
-// ---- Supabase
+/* =====================================================
+   WFC APP — script optimisé (mêmes fonctionnalités)
+   -----------------------------------------------------
+   - Login + Dashboard + Checklist + Historique + Détail
+   - Multi-dates pour "Non conforme" (+ bouton 🗑)
+   - "i" info : infobulle desktop / fiche plein-écran mobile
+   - Nom boutique : MAJUSCULES, centré, avec marge sous le nom
+   - Tableau historique responsive (cartes en mobile)
+   - Compatibilité: pas de ?. ni ??
+   ===================================================== */
+
+// ---------------------------
+// 0) CONFIG SUPABASE
+// ---------------------------
 const SUPABASE_URL = 'https://vhgfjnnwhwglirnkvacz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoZ2Zqbm53aHdnbGlybmt2YWN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ1MjY4ODksImV4cCI6MjA3MDEwMjg4OX0.-JMgOOD6syRvAzBexgUMjxTgNqpH8mhrrDxw0ItmS4w';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ---- App state
+// ---------------------------
+// 1) ETAT GLOBAL
+// ---------------------------
 const APP = { LOGIN:'login', DASH:'dash', HIST:'hist', VIEW:'view', PRE:'pre', CHECK:'check' };
 let appState = APP.LOGIN;
 
@@ -17,45 +32,51 @@ let selectedStoreId = null;
 
 const app = document.getElementById('app');
 
-// ---- UI helpers (mobile sheet)
-function isMobile(){ return window.matchMedia && window.matchMedia('(max-width: 640px)').matches; }
+// ---------------------------
+// 2) HELPERS GÉNÉRIQUES
+// ---------------------------
+function isMobile(){ return (window.matchMedia && window.matchMedia('(max-width: 640px)').matches); }
 
-function openInfoSheet(titleText, bodyHtml){
-  // backdrop
-  const backdrop = document.createElement('div');
-  backdrop.className = 'sheet-backdrop';
-  backdrop.addEventListener('click', ()=> close());
-  // sheet
-  const sheet = document.createElement('div');
-  sheet.className = 'sheet';
-  sheet.innerHTML = `
-    <div class="sheet-header">
-      <div class="sheet-title">${titleText || 'Informations'}</div>
-      <button class="sheet-close" type="button" aria-label="Fermer">✕</button>
-    </div>
-    <div class="sheet-body">${bodyHtml || ''}</div>`;
-  sheet.querySelector('.sheet-close').addEventListener('click', ()=> close());
+function $(sel, root){ return (root||document).querySelector(sel); }
+function $all(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
 
-  function close(){
-    document.body.classList.remove('no-scroll');
-    backdrop.remove();
-    sheet.remove();
+function el(tag, props={}, ...children){
+  const n = document.createElement(tag);
+  if (props) {
+    if (props.className) n.className = props.className;
+    if (props.text) n.textContent = props.text;
+    if (props.html != null) n.innerHTML = props.html;
+    if (props.attrs) Object.keys(props.attrs).forEach(k=> n.setAttribute(k, props.attrs[k]));
+    if (props.style) Object.assign(n.style, props.style);
+    if (props.on) Object.keys(props.on).forEach(evt => n.addEventListener(evt, props.on[evt]));
   }
-
-  document.body.classList.add('no-scroll');
-  document.body.appendChild(backdrop);
-  document.body.appendChild(sheet);
-  // animate in
-  requestAnimationFrame(()=>{
-    backdrop.classList.add('show');
-    sheet.classList.add('show');
-  });
+  children.flat().forEach(c => { if (c!=null) n.appendChild(c); });
+  return n;
 }
 
+function fragment(){ return document.createDocumentFragment(); }
 
-// ---- Helpers
-const getStoreId   = (name)=> (storeList.find(s=>s.name===name)?.id ?? null);
-const getStoreCode = (name)=> (storeList.find(s=>s.name===name)?.code ?? '');
+// ---------------------------
+// 3) DATES & PÉRIODES
+// ---------------------------
+const FR_DAYS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+const FR_MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+function parseFRDate(str){ const [d,m,y]=str.split('/').map(n=>parseInt(n,10)); return new Date(y,m-1,d); }
+function ymd(d){ const z=new Date(d); z.setHours(12,0,0,0); return z.toISOString().slice(0,10); }
+function toFR(dStr){ const [y,m,d]=dStr.split('-'); return `${d}/${m}/${y}`; }
+function daysBetween(start,end){ const out=[]; const cur=new Date(start); cur.setHours(12,0,0,0); const e=new Date(end); e.setHours(12,0,0,0); while(cur<=e){ out.push(ymd(cur)); cur.setDate(cur.getDate()+1);} return out; }
+function parsePeriodeFR(txt){
+  const m=(txt||'').match(/du\s(\d{2}\/\d{2}\/\d{4})\sau\s(\d{2}\/\d{2}\/\d{4})/);
+  if(!m) return null;
+  return { start: parseFRDate(m[1]), end: parseFRDate(m[2]) };
+}
+
+// ---------------------------
+// 4) SUPABASE HELPERS
+// ---------------------------
+function getStoreId(name){ const f=storeList.find(s=>s.name===name); return f ? f.id : null; }
+function getStoreCode(name){ const f=storeList.find(s=>s.name===name); return f ? f.code : ''; }
 
 async function fetchStores(){
   const { data } = await supabase.from('boutiques').select('*').order('nom');
@@ -74,120 +95,125 @@ async function fetchVerifs(storeId){
   return data||[];
 }
 
-
-// French date formatting helpers
-const FR_DAYS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-const FR_MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-function formatLongFR(d){
-  const dt = new Date(d+'T12:00:00');
-  const day = FR_DAYS[dt.getDay()];
-  const dd = String(dt.getDate()).padStart(2,'0');
-  const mmName = FR_MONTHS[dt.getMonth()];
-  const yyyy = dt.getFullYear();
-  return `${day} ${dd} ${mmName} ${yyyy}`;
-}
-// date utils
-function parseFRDate(str){ const [d,m,y]=str.split('/').map(n=>parseInt(n,10)); return new Date(y,m-1,d); }
-function ymd(d){ const z=new Date(d); z.setHours(12); return z.toISOString().slice(0,10); }
-function daysBetween(start,end){ const res=[]; const cur=new Date(start); while(cur<=end){ res.push(ymd(cur)); cur.setDate(cur.getDate()+1);} return res; }
-function toFR(dStr){ // 'YYYY-MM-DD' -> 'DD/MM/YYYY'
-  const [y,m,d] = dStr.split('-');
-  return `${d}/${m}/${y}`;
-}
+// ---------------------------
+// 5) AGRÉGATIONS (calendrier, stats)
+// ---------------------------
 function computeCoveredDays(verifs){
   const set=new Set();
   (verifs||[]).forEach(v=>{
-    const per=v.periode_couverte||'';
-    const m=per.match(/du\s(\d{2}\/\d{2}\/\d{4})\sau\s(\d{2}\/\d{2}\/\d{4})/);
-    if(!m) return;
-    const d1=parseFRDate(m[1]); const d2=parseFRDate(m[2]);
-    daysBetween(d1,d2).forEach(d=>set.add(d));
+    const per = parsePeriodeFR(v.periode_couverte||'');
+    if(!per) return;
+    daysBetween(per.start, per.end).forEach(d=>set.add(d));
   });
   return set;
 }
 
-
+// Supporte errorDates[] (multi), ou fallback sur errorDate
 function computeErrorDays(verifs){
   const set = new Set();
-  const map = new Map(); // dateString => [verificationId,...]
+  const map = new Map(); // date => [verificationId,...]
   (verifs||[]).forEach(v=>{
-    const per=v.periode_couverte||'';
-    const m=per.match(/du\s(\d{2}\/\d{2}\/\d{4})\sau\s(\d{2}\/\d{2}\/\d{4})/);
-    const d1 = m ? parseFRDate(m[1]) : null;
-    const d2 = m ? parseFRDate(m[2]) : null;
+    const per = parsePeriodeFR(v.periode_couverte||'');
+    const d1 = per ? per.start : null;
+    const d2 = per ? per.end   : null;
     const results = v.resultats || {};
     Object.values(results).forEach(val=>{
-      if(val && val.status === 'error' && val.errorDate){
-        const ds = val.errorDate; // YYYY-MM-DD
+      if(!val || val.status!=='error') return;
+      const list = Array.isArray(val.errorDates) ? val.errorDates : (val.errorDate ? [val.errorDate] : []);
+      list.forEach(ds=>{
+        if(!ds) return;
         const d = new Date(ds);
         const inRange = (!d1 || !d2) ? true : (d >= d1 && d <= d2);
         if(inRange){
           set.add(ds);
           const arr = map.get(ds) || [];
-          if(!arr.includes(v.id)) arr.push(v.id);
+          if(arr.indexOf(v.id)===-1) arr.push(v.id);
           map.set(ds, arr);
         }
-      }
+      });
     });
   });
   return { set, map };
 }
+
 function recurringErrors(verifs){
   const counts={};
-  verifs.forEach(v=>{ const r=v.resultats||{}; Object.entries(r).forEach(([cat,val])=>{ if(val && val.status==='error') counts[cat]=(counts[cat]||0)+1; }); });
+  verifs.forEach(v=>{ const r=v.resultats||{}; Object.keys(r).forEach(cat=>{ if(r[cat] && r[cat].status==='error') counts[cat]=(counts[cat]||0)+1; }); });
   const nameMap={}; (categories||[]).forEach(c=>nameMap[c.id]=c.nom_categorie);
-  return Object.entries(counts)
-    .map(([id,c])=>({label:nameMap[id]||id,count:c}))
-    .sort((a,b)=>b.count-a.count)
-    .slice(0,3);
+  return Object.keys(counts).map(id=>({label:nameMap[id]||id, count:counts[id]})).sort((a,b)=>b.count-a.count).slice(0,3);
 }
 
-// ---- Login
+// ---------------------------
+// 6) MOBILE INFO SHEET
+// ---------------------------
+function openInfoSheet(titleText, bodyHtml){
+  const backdrop = el('div', {className:'sheet-backdrop'});
+  const sheet = el('div', {className:'sheet', html:`
+    <div class="sheet-header">
+      <div class="sheet-title">${titleText || 'Informations'}</div>
+      <button class="sheet-close" type="button" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">${bodyHtml || ''}</div>
+  `});
+  function close(){ document.body.classList.remove('no-scroll'); backdrop.remove(); sheet.remove(); }
+  backdrop.addEventListener('click', close);
+  sheet.querySelector('.sheet-close').addEventListener('click', close);
+  document.body.classList.add('no-scroll');
+  document.body.appendChild(backdrop);
+  document.body.appendChild(sheet);
+  requestAnimationFrame(()=>{ backdrop.classList.add('show'); sheet.classList.add('show'); });
+}
+
+// =====================================================
+// VUES
+// =====================================================
+
+// ---------------------------
+// LOGIN
+// ---------------------------
 async function renderLogin(){
   appState=APP.LOGIN; app.innerHTML='';
   if(!storeList.length) await fetchStores();
 
-  const container=document.createElement('div'); container.className='container';
-  const wrap=document.createElement('div'); wrap.className='login-wrap';
-  const card=document.createElement('div'); card.className='login-card';
+  const container = el('div',{className:'container'});
+  const wrap = el('div',{className:'login-wrap'});
+  const card = el('div',{className:'login-card'});
 
-  const avatar=document.createElement('div'); avatar.className='login-avatar';
-  avatar.innerHTML='<img src="favicon.png" alt="logo" class="login-logo">'; 
-  card.appendChild(avatar);
+  const avatar = el('div',{className:'login-avatar', html:'<img src="favicon.png" alt="logo" class="login-logo">'});
+  const row1 = el('div',{className:'form-row', html:'<div class="icon-cell">🏬</div>'});
+  const sel  = el('select');
+  sel.innerHTML = '<option value="">Choisir une boutique</option>' + storeList.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
+  row1.appendChild(sel);
 
-  const row1=document.createElement('div'); row1.className='form-row'; row1.innerHTML='<div class="icon-cell">🏬</div>';
-  const sel=document.createElement('select'); 
-  sel.innerHTML='<option value="">Choisir une boutique</option>'+storeList.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
-  row1.appendChild(sel); card.appendChild(row1);
+  const row2 = el('div',{className:'form-row', html:'<div class="icon-cell">🔒</div>'});
+  const code = el('input', {attrs:{type:'password', placeholder:'Code boutique'}});
+  row2.appendChild(code);
 
-  const row2=document.createElement('div'); row2.className='form-row'; row2.innerHTML='<div class="icon-cell">🔒</div>';
-  const code=document.createElement('input'); code.type='password'; code.placeholder='Code boutique'; 
-  row2.appendChild(code); card.appendChild(row2);
+  const err = el('div',{className:'err hidden', text:'Code incorrect'});
+  const btn = el('button',{className:'login-button', text:'LOGIN'}); btn.disabled=true;
 
-  const err=document.createElement('div'); err.className='err hidden'; err.textContent='Code incorrect'; card.appendChild(err);
-
-  const btn=document.createElement('button'); btn.className='login-button'; btn.textContent='LOGIN'; btn.disabled=true; 
-  card.appendChild(btn);
-
+  card.append(avatar,row1,row2,err,btn);
   wrap.appendChild(card); container.appendChild(wrap); app.appendChild(container);
 
-  const check=()=>{ 
-    const exp=sel.value?getStoreCode(sel.value):null; 
-    const ok=!!sel.value && !!code.value && (code.value===exp); 
-    const showErr=!!sel.value && !!code.value && (code.value!==exp); 
-    err.classList.toggle('hidden',!showErr); 
-    btn.disabled=!ok; 
-  };
+  function check(){
+    const exp = sel.value ? getStoreCode(sel.value) : null;
+    const ok = !!sel.value && !!code.value && (code.value===exp);
+    const showErr = !!sel.value && !!code.value && (code.value!==exp);
+    err.classList.toggle('hidden', !showErr);
+    btn.disabled = !ok;
+  }
   sel.addEventListener('change',check); code.addEventListener('input',check);
 
   btn.addEventListener('click', async ()=>{
-    selectedStore=sel.value; 
-    selectedStoreId=getStoreId(selectedStore); 
+    selectedStore = sel.value;
+    selectedStoreId = getStoreId(selectedStore);
     await renderDashboard();
   });
 }
 
-// ---- Dashboard
+// ---------------------------
+// DASHBOARD
+// ---------------------------
 async function renderDashboard(){
   appState=APP.DASH; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
@@ -195,53 +221,44 @@ async function renderDashboard(){
 
   const verifs = await fetchVerifs(selectedStoreId);
   const covered = computeCoveredDays(verifs);
-  const { set: errorDays, map: errorDateMap } = computeErrorDays(verifs);
+  const { set:errorDays, map:errorDateMap } = computeErrorDays(verifs);
   const errorsTop = recurringErrors(verifs);
 
-  const container=document.createElement('div'); container.className='container';
-  const dash=document.createElement('div'); dash.className='dashboard';
+  const container = el('div',{className:'container'});
+  const dash = el('div',{className:'dashboard'});
 
   // Sidebar
-  const side=document.createElement('aside'); side.className='sidebar';
-  side.innerHTML=`<div class="store-name">${selectedStore}</div><div class="store-code">ID: ${selectedStoreId}</div>`;
-  const menu=document.createElement('div'); menu.className='menu';
-  const bStart=document.createElement('button'); bStart.className='primary-lg'; bStart.textContent='Commencer un audit';
-  const bHist=document.createElement('button');  bHist.className='ghost-button';  bHist.textContent="Voir l'historique";
-  const bBack=document.createElement('button');  bBack.className='ghost-button';  bBack.textContent='Changer de boutique';
+  const side = el('aside',{className:'sidebar'});
+  side.innerHTML = `<div class="store-name" style="margin-bottom:12px; text-align:center;">${selectedStore.toUpperCase()}</div>`;
+  const menu = el('div',{className:'menu'});
+  const bStart = el('button',{className:'primary-lg', text:'Commencer un audit'});
+  const bHist  = el('button',{className:'ghost-button', text:"Voir l'historique"});
+  const bBack  = el('button',{className:'ghost-button', text:'Changer de boutique'});
   menu.append(bStart,bHist,bBack); side.appendChild(menu);
 
-  // Content
-  const content=document.createElement('section'); content.className='content';
-  const tAud=document.createElement('div'); tAud.className='tile'; tAud.innerHTML='<h3>Audits réalisés</h3><div class="big">'+verifs.length+'</div>';
-  const tErr=document.createElement('div'); tErr.className='tile'; tErr.innerHTML='<h3>Erreurs récurrentes</h3>'+ (errorsTop.length? '<ul>'+errorsTop.map(e=>`<li>${e.label} — <b>${e.count}</b></li>`).join('')+'</ul>':'<div>—</div>');
-  const tDocs=document.createElement('div'); 
-  tDocs.className='tile';
-  tDocs.innerHTML='<h3>Documents ICC</h3><div class="muted">Consulter & imprimer</div>';
-  tDocs.style.cursor='pointer';
-  tDocs.onclick=()=>renderDocs();
+  // Content tiles
+  const content = el('section',{className:'content'});
+  const tAud = el('div',{className:'tile', html:`<h3>Audits réalisés</h3><div class="big">${verifs.length}</div>`});
+  const tErr = el('div',{className:'tile', html:`<h3>Erreurs récurrentes</h3>${ errorsTop.length ? '<ul>'+errorsTop.map(e=>`<li>${e.label} — <b>${e.count}</b></li>`).join('')+'</ul>' : '<div>—</div>'}`});
+  const tDocs = el('div',{className:'tile', html:'<h3>Documents ICC</h3><div class="muted">Consulter & imprimer</div>'});
+  tDocs.style.cursor='pointer'; tDocs.addEventListener('click', ()=>renderDocs());
   content.append(tAud,tErr,tDocs);
 
   // Calendar
-  const cal=document.createElement('div'); cal.className='card calendar';
-  const calHead=document.createElement('div'); calHead.className='cal-head'; calHead.innerHTML='<div class="nav"><button class="prev">◀</button><button class="next">▶</button></div><div class="title"></div>';
-  const calBody=document.createElement('div'); 
+  const cal = el('div',{className:'card calendar'});
+  const calHead = el('div',{className:'cal-head', html:'<div class="nav"><button class="prev">◀</button><button class="next">▶</button></div><div class="title"></div>'});
+  const calBody = el('div');
   cal.append(calHead,calBody);
-  // Légende
-  const legend=document.createElement('div'); legend.className='calendar-legend'; legend.innerHTML='<span class="legend-dot legend-covered"></span> Jour contrôlé <span class="legend-dot legend-error"></span> Erreur détectée'; 
+  const legend = el('div',{className:'calendar-legend', html:'<span class="legend-dot legend-covered"></span> Jour contrôlé <span class="legend-dot legend-error"></span> Erreur détectée'});
   cal.appendChild(legend);
 
-  // History (teaser)
-  const histCard=document.createElement('div'); histCard.className='card history'; histCard.innerHTML='<h3>Historique</h3>';
-  if(!verifs.length) histCard.innerHTML+='<div>Aucun audit.</div>'; 
-  else verifs.slice(0,6).forEach(v=>{ 
-    const row=document.createElement('div'); row.className='row'; 
-    row.textContent=`${v.date ? toFR(v.date) : '—'} — ${v.verificateur} (${v.periode_couverte||''})`; 
-    histCard.appendChild(row); 
-  });
-
-  content.append(cal,histCard); 
-  dash.append(side,content); 
-  container.appendChild(dash); 
+  // History teaser
+  const histCard = el('div',{className:'card history', html:'<h3>Historique</h3>'});
+  if(!verifs.length){ histCard.innerHTML += '<div>Aucun audit.</div>'; }
+  else verifs.slice(0,6).forEach(v=> histCard.appendChild(el('div',{className:'row', text:`${v.date ? toFR(v.date) : '—'} — ${v.verificateur} (${v.periode_couverte||''})`})));
+  content.append(cal,histCard);
+  dash.append(side,content);
+  container.appendChild(dash);
   app.appendChild(container);
 
   // Calendar render
@@ -250,48 +267,34 @@ async function renderDashboard(){
   function renderMonth(){
     title.textContent=new Date(y,m,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
     calBody.innerHTML='';
-    const table=document.createElement('table');
-    const thead=document.createElement('thead'); 
-    const trh=document.createElement('tr'); 
-    ['L','M','M','J','V','S','D'].forEach(d=>{ const th=document.createElement('th'); th.textContent=d; trh.appendChild(th); }); 
-    thead.appendChild(trh);
-    const tbody=document.createElement('tbody');
-    const first=new Date(y,m,1); 
-    const start=(first.getDay()+6)%7; 
-    const days=new Date(y,m+1,0).getDate();
+    const table=el('table'); const thead=el('thead'); const trh=el('tr');
+    ['L','M','M','J','V','S','D'].forEach(d=>trh.appendChild(el('th',{text:d}))); thead.appendChild(trh);
+    const tbody=el('tbody'); const first=new Date(y,m,1); const start=(first.getDay()+6)%7; const days=new Date(y,m+1,0).getDate();
     let day=1;
-    for(let r=0;r<6;r++){ 
-      const tr=document.createElement('tr');
-      for(let c=0;c<7;c++){ 
-        const td=document.createElement('td');
-        if((r===0&&c<start)||day>days) td.innerHTML='&nbsp;';
-        else { 
-          const d=String(day).padStart(2,'0'); 
-          const ds=`${y}-${String(m+1).padStart(2,'0')}-${d}`; 
-          const span=document.createElement('span'); 
-          span.textContent=d; 
+    for(let r=0;r<6;r++){
+      const tr=el('tr');
+      for(let c=0;c<7;c++){
+        const td=el('td');
+        if((r===0&&c<start)||day>days){ td.innerHTML='&nbsp;'; }
+        else{
+          const d=String(day).padStart(2,'0'); const ds=`${y}-${String(m+1).padStart(2,'0')}-${d}`;
+          const span=el('span',{text:d});
           if(covered.has(ds)) td.classList.add('day-covered');
-          if(errorDays.has(ds)) { 
-            td.classList.add('day-error'); 
-            const arr = (errorDateMap && errorDateMap.get) ? errorDateMap.get(ds) : null;
+          if(errorDays.has(ds)){
+            td.classList.add('day-error');
+            const arr = errorDateMap.get ? errorDateMap.get(ds) : null;
             if(arr && arr.length){
-              td.classList.add('clickable');
-              td.title = 'Voir le contrôle du ' + ds;
-              td.addEventListener('click', ()=>{
-                if(arr.length===1) renderHistoryDetail(arr[0]); 
-                else renderHistoryList(); 
-              });
+              td.classList.add('clickable'); td.title='Voir le contrôle du '+ds;
+              td.addEventListener('click', ()=>{ if(arr.length===1) renderHistoryDetail(arr[0]); else renderHistoryList(); });
             }
-          } 
-          td.appendChild(span); 
-          day++; 
+          }
+          td.appendChild(span); day++;
         }
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
     }
-    table.append(thead,tbody); 
-    calBody.appendChild(table);
+    table.append(thead,tbody); calBody.appendChild(table);
   }
   calHead.querySelector('.prev').onclick=()=>{ m--; if(m<0){m=11;y--;} renderMonth(); };
   calHead.querySelector('.next').onclick=()=>{ m++; if(m>11){m=0;y++;} renderMonth(); };
@@ -303,267 +306,202 @@ async function renderDashboard(){
   bStart.onclick = ()=>renderPreCheck();
 }
 
-// ---- Pre-check form (date + période + vérificateur) + anti-doublon
-
+// ---------------------------
+// PRÉ-CHECK (date/période/vérificateur)
+// ---------------------------
 async function renderPreCheck(){
   appState=APP.PRE; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
   await fetchCategories();
 
-  // helpers
-  const toBadge = (text)=>{
-    const span=document.createElement('span');
-    span.textContent=text;
-    span.style.padding='8px 12px';
-    span.style.background='#f1f5ff';
-    span.style.border='1px solid #e5e7eb';
-    span.style.borderRadius='999px';
-    span.style.fontWeight='600';
-    span.style.fontSize='14px';
-    return span;
-  };
+  function badge(text){ return el('span',{text, style:{padding:'8px 12px', background:'#f1f5ff', border:'1px solid #e5e7eb', borderRadius:'999px', fontWeight:'600', fontSize:'14px'}}); }
+  const dateISO = ymd(new Date());
 
-  const today = new Date();
-  const dateISO = ymd(today);
-
-  // compute period from an audit date (exclusive: previous 7 days)
-  const computePeriod = (iso)=>{
-    const d = new Date(iso);
-    const end = new Date(d); end.setDate(end.getDate()-1);
+  function computePeriod(iso){
+    const d = new Date(iso); const end = new Date(d); end.setDate(end.getDate()-1);
     const start = new Date(end); start.setDate(start.getDate()-6);
     return { startISO: ymd(start), endISO: ymd(end), startFR: toFR(ymd(start)), endFR: toFR(ymd(end)) };
-  };
-
+  }
   let per = computePeriod(dateISO);
 
-  const wrap = document.createElement('div');
-  wrap.className = 'history-wrap';
-
-  const header = document.createElement('div');
-  header.className = 'history-header';
-  const title = document.createElement('h2');
-  title.textContent = `Informations avant vérification — ${selectedStore}`;
-  const back = document.createElement('button');
-  back.className = 'ghost-button';
-  back.textContent = '← Retour';
-  back.onclick = ()=>renderDashboard();
-  /* removed back-precheck */
-  /* removed alignBack */
-
+  const wrap = el('div',{className:'history-wrap'});
+  const header = el('div',{className:'history-header'});
+  const title = el('h2',{text:`Informations avant vérification — ${selectedStore}`});
+  const back = el('button',{className:'ghost-button', text:'← Retour', on:{click:()=>renderDashboard()}});
   header.append(title, back);
-  wrap.appendChild(header);
 
-  const card = document.createElement('div');
-  card.className = 'card pre-card';
-  const cardInner = document.createElement('div');
-  cardInner.className = 'meta-grid';
+  const card = el('div',{className:'card pre-card'});
+  const grid = el('div',{className:'meta-grid'});
 
-  // Audit date (modifiable)
-  const colDate = document.createElement('div');
+  // Date audit
+  const colDate = el('div',{});
   colDate.innerHTML = '<div class="label">Date d\'audit</div>';
-  const dateInput = document.createElement('input');
-  dateInput.type='date'; dateInput.value = dateISO; dateInput.className='input-pill';
-  colDate.appendChild(dateInput);
-  cardInner.appendChild(colDate);
+  const dateInput = el('input',{attrs:{type:'date'}, className:'input-pill'}); dateInput.value=dateISO;
+  colDate.appendChild(dateInput); grid.appendChild(colDate);
 
-  // Period (non editable) displayed as badges
-  const colFrom = document.createElement('div');
-  colFrom.innerHTML = '<div class="label label-period">Période du</div>';
-  const fromBadge = toBadge(per.startFR);
-  colFrom.appendChild(fromBadge);
-  cardInner.appendChild(colFrom);
-
-  const colTo = document.createElement('div');
-  colTo.innerHTML = '<div class="label label-period">au</div>';
-  const toBadgeEl = toBadge(per.endFR);
-  colTo.appendChild(toBadgeEl);
-  cardInner.appendChild(colTo);
+  // Période (badges non éditables)
+  const colFrom = el('div',{}); colFrom.innerHTML = '<div class="label label-period">Période du</div>'; const fromBadge = badge(per.startFR); colFrom.appendChild(fromBadge); grid.appendChild(colFrom);
+  const colTo   = el('div',{}); colTo.innerHTML   = '<div class="label label-period">au</div>';    const toBadgeEl  = badge(per.endFR);   colTo.appendChild(toBadgeEl);    grid.appendChild(colTo);
 
   // Vérificateur
-  const colWho = document.createElement('div');
-  colWho.innerHTML = '<div class="label">Vérificateur</div>';
-  const whoInput = document.createElement('input');
-  whoInput.type='text'; whoInput.placeholder='Votre prénom'; whoInput.className='input-pill';
-  colWho.appendChild(whoInput);
-  cardInner.appendChild(colWho);
+  const colWho = el('div',{}); colWho.innerHTML = '<div class="label">Vérificateur</div>';
+  const whoInput = el('input',{attrs:{type:'text', placeholder:'Votre prénom'}, className:'input-pill'});
+  colWho.appendChild(whoInput); grid.appendChild(colWho);
 
-  card.appendChild(cardInner);
-
-  const actions = document.createElement('div');
-  actions.style.marginTop='12px';
-  const startBtn = document.createElement('button');
-  startBtn.className='primary-lg';
-  startBtn.textContent='Démarrer la checklist';
-  startBtn.disabled = true;
+  const actions = el('div',{}); actions.style.marginTop='12px';
+  const startBtn = el('button',{className:'primary-lg', text:'Démarrer la checklist'}); startBtn.disabled=true;
   actions.appendChild(startBtn);
-  card.appendChild(actions);
 
-  wrap.appendChild(card);
+  card.append(grid, actions);
+  wrap.append(header, card);
   app.appendChild(wrap);
 
-  // Enable when who typed
-  const updateBtn = ()=>{ startBtn.disabled = !whoInput.value.trim(); };
-  whoInput.addEventListener('input', updateBtn);
-  updateBtn();
+  // Enable button
+  function updateBtn(){ startBtn.disabled = !whoInput.value.trim(); }
+  whoInput.addEventListener('input', updateBtn); updateBtn();
 
-  // Recompute period on date change
-  dateInput.addEventListener('change', ()=>{
-    per = computePeriod(dateInput.value);
-    fromBadge.textContent = per.startFR;
-    toBadgeEl.textContent = per.endFR;
-  });
+  // Update period on change
+  dateInput.addEventListener('change', ()=>{ per = computePeriod(dateInput.value); fromBadge.textContent=per.startFR; toBadgeEl.textContent=per.endFR; });
 
   startBtn.onclick = async ()=>{
-    const d = dateInput.value;
-    const who = whoInput.value.trim();
+    const d = dateInput.value; const who = whoInput.value.trim();
     if(!d || !who){ alert('Merci de renseigner la date et le prénom.'); return; }
 
-    // anti-doublon
-    const { data:existing } = await supabase
-      .from('verifications')
-      .select('id')
-      .eq('boutique_id', selectedStoreId)
-      .eq('date', d)
-      .maybeSingle();
-
+    const { data:existing } = await supabase.from('verifications').select('id').eq('boutique_id', selectedStoreId).eq('date', d).maybeSingle();
     if(existing){
-      if(confirm('Une vérification existe déjà pour cette date. Voulez-vous consulter le détail ?')){
-        return renderHistoryDetail(existing.id);
-      }
+      if(confirm('Une vérification existe déjà pour cette date. Voulez-vous consulter le détail ?')) return renderHistoryDetail(existing.id);
       return;
     }
-
     const periode = `du ${per.startFR} au ${per.endFR}`;
     const meta = { date:d, from: per.startISO, to: per.endISO, who, periode };
     renderChecklist(meta);
   };
 }
-// ---- Checklist dynamique depuis categories
+
+// ---------------------------
+// CHECKLIST
+// ---------------------------
 function renderChecklist(meta){
   appState=APP.CHECK; app.innerHTML='';
 
-  const wrap = document.createElement('div');
-  wrap.className = 'history-wrap';
-
-  const header = document.createElement('div');
-  header.className = 'history-header';
-  const title = document.createElement('h2');
-  title.textContent = `Checklist — ${selectedStore} (${toFR(meta.date)})`;
-  const back = document.createElement('button');
-  back.className = 'ghost-button';
-  back.textContent = '← Annuler';
-  back.onclick = ()=>renderDashboard();
-  /* removed back-precheck */
-  /* removed alignBack */
-
+  const wrap = el('div',{className:'history-wrap'});
+  const header = el('div',{className:'history-header'});
+  const title = el('h2',{text:`Checklist — ${selectedStore} (${toFR(meta.date)})`});
+  const back = el('button',{className:'ghost-button', text:'← Annuler', on:{click:()=>renderDashboard()}});
   header.append(title, back);
-  wrap.appendChild(header);
 
-  const form = document.createElement('div');
-  form.className='result-list';
-
-  const activeCats = (categories||[]).filter(c=>c.actif !== false);
+  const form = el('div',{className:'result-list'});
+  const activeCats = (categories||[]).filter(c=>c.actif!==false);
   const fields = [];
 
+  function buildDatePickerList(){
+    const wrap = el('div',{});
+    const list = el('div',{});
+    const addBtn = el('button',{className:'ghost-button', text:'+ Ajouter un jour'});
+    addBtn.type='button';
+
+    function buildOne(){
+      const line = el('div',{style:{display:'flex', gap:'6px', alignItems:'center', marginBottom:'6px'}});
+      const select = el('select',{style:{flex:'1'}});
+      const per = parsePeriodeFR(meta.periode||'');
+      const options = (per && per.start && per.end) ? daysBetween(per.start, per.end) : [meta.date];
+      options.forEach(d=>{
+        const opt = el('option'); opt.value=d;
+        const label = new Date(d).toLocaleDateString('fr-FR',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+        opt.textContent = label.charAt(0).toUpperCase()+label.slice(1);
+        select.appendChild(opt);
+      });
+      select.value = options.indexOf(meta.date)>=0 ? meta.date : options[0];
+      const del = el('button',{className:'ghost-button', text:'🗑'}); del.type='button'; del.style.padding='4px 8px';
+      del.addEventListener('click', ()=> line.remove());
+      line.append(select, del);
+      return line;
+    }
+
+    // label
+    const lbl = el('div',{text:'Jours de détection (dans la période)'}); Object.assign(lbl.style,{fontSize:'12px', color:'#475569', margin:'8px 0 4px'});
+    wrap.append(lbl, list, addBtn);
+
+    // ensure at least one picker
+    function ensure(){ if(!list.querySelector('select')) list.appendChild(buildOne()); }
+    ensure();
+    addBtn.addEventListener('click', ()=> list.appendChild(buildOne()));
+
+    return { root:wrap, getValues: ()=> Array.from(list.querySelectorAll('select')).map(s=>s.value).filter(Boolean) };
+  }
+
   activeCats.forEach(cat=>{
-    const row = document.createElement('div'); row.className='result-row';
-    const t = document.createElement('div'); t.className='res-title'; t.textContent = cat.nom_categorie;
-    
-if(cat.description){
-      const infoWrap = document.createElement('span');
-      infoWrap.className='info-wrap';
-      const info = document.createElement('span'); info.className='info-icon'; info.textContent='ℹ️';
-      const tip = document.createElement('div'); tip.className='tooltip'; tip.textContent = cat.description || '';
-      infoWrap.appendChild(info); infoWrap.appendChild(tip);
+    const row = el('div',{className:'result-row'});
+    const title = el('div',{className:'res-title', text:cat.nom_categorie});
+
+    if(cat.description){
+      const infoWrap = el('span',{className:'info-wrap'});
+      const info = el('span',{className:'info-icon', text:'ℹ️'});
+      const tip  = el('div',{className:'tooltip', text:cat.description||''});
+      infoWrap.append(info, tip);
 
       if(isMobile()){
-        // On mobile: open a full-screen sheet on tap
         info.addEventListener('click', (e)=>{
-          e.preventDefault();
-          e.stopPropagation();
-          const titleTxt = cat.nom_categorie || 'Informations';
-          const html = `<div class="tip-lines">${(cat.description || '').replace(/\n/g,'<br>')}</div>`;
-          openInfoSheet(titleTxt, html);
+          e.preventDefault(); e.stopPropagation();
+          const html = `<div class="tip-lines">${(cat.description||'').replace(/\\n/g,'<br>')}</div>`;
+          openInfoSheet(cat.nom_categorie||'Informations', html);
         });
       } else {
-        // Desktop: keep classic tooltip on hover/click
         const toggle = ()=> tip.classList.toggle('show');
         info.addEventListener('mouseenter', ()=> tip.classList.add('show'));
         info.addEventListener('mouseleave', ()=> tip.classList.remove('show'));
         info.addEventListener('click', toggle);
       }
+      title.appendChild(infoWrap);
+    }
 
-      t.appendChild(infoWrap);
-  }
-    const control = document.createElement('div'); control.style.display='flex'; control.style.gap='10px'; control.style.flexWrap='wrap';
-
-    const ok = document.createElement('button'); ok.type='button'; ok.textContent='✅ Conforme'; ok.className='ghost-button';
-    const ko = document.createElement('button'); ko.type='button'; ko.textContent='❌ Non conforme'; ko.className='ghost-button';
-    const comment = document.createElement('input'); comment.type='text'; comment.placeholder='Commentaire (optionnel)'; comment.style.flex='1';
+    const control = el('div',{}); Object.assign(control.style,{display:'flex', gap:'10px', flexWrap:'wrap'});
+    const ok = el('button',{className:'ghost-button', text:'✅ Conforme'}); ok.type='button';
+    const ko = el('button',{className:'ghost-button', text:'❌ Non conforme'}); ko.type='button';
+    const comment = el('input',{attrs:{type:'text', placeholder:'Commentaire (optionnel)'}}); comment.style.flex='1';
 
     let status = null;
-    const setSel = (s)=>{ 
-      status=s; 
-      ok.style.background = s==='done' ? '#f0fff4' : '#fff'; 
-      ko.style.background = s==='error' ? '#fff0f0' : '#fff'; 
+    const datesPicker = buildDatePickerList();
+    const dateWrap = datesPicker.root; dateWrap.style.display='none';
+
+    function setSel(s){
+      status=s;
+      ok.style.background = s==='done' ? '#f0fff4' : '#fff';
+      ko.style.background = s==='error' ? '#fff0f0' : '#fff';
       dateWrap.style.display = s==='error' ? 'block' : 'none';
-    };
-    ok.onclick = ()=>setSel('done'); ko.onclick = ()=>setSel('error');
-
-    
-    // Date d'erreur (affichée uniquement si 'Non conforme')
-    const dateWrap = document.createElement('div');
-    dateWrap.style.display='none';
-    dateWrap.style.marginTop='8px';
-
-    const labelDate = document.createElement('div');
-    labelDate.textContent = 'Jour de détection (dans la période)';
-    labelDate.style.fontSize='12px';
-    labelDate.style.color='#475569';
-    labelDate.style.marginBottom='4px';
-
-    const dateSelect = document.createElement('select'); dateSelect.style.width='100%';
-    (function(){
-      const m = (meta.periode||'').match(/du\s(\d{2}\/\d{2}\/\d{4})\sau\s(\d{2}\/\d{2}\/\d{4})/);
-      let start=null,end=null; if(m){ start = parseFRDate(m[1]); end = parseFRDate(m[2]); }
-      const options = start&&end ? daysBetween(start,end) : [meta.date];
-      options.forEach(d=>{ 
-        const opt=document.createElement('option'); 
-        opt.value=d; 
-        const label = new Date(d).toLocaleDateString('fr-FR',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
-        opt.textContent = label.charAt(0).toUpperCase()+label.slice(1);
-        dateSelect.appendChild(opt); 
-      });
-      dateSelect.value = (options.includes(meta.date) ? meta.date : options[0]);
-    })();
-
-    dateWrap.append(labelDate, dateSelect);
+    }
+    ok.addEventListener('click', ()=>setSel('done'));
+    ko.addEventListener('click', ()=>setSel('error'));
 
     control.append(ok, ko, comment, dateWrap);
-    
-    row.append(t, control);
+    row.append(title, control);
     form.appendChild(row);
 
-    fields.push({ id: cat.id, get: ()=>({ status, comment: comment.value?.trim(), errorDate: (status==='error'? dateSelect.value : undefined) }) });
+    fields.push({
+      id: cat.id,
+      get: ()=>{
+        const base = { status: status, comment: (comment.value||'').trim() };
+        if(status==='error'){
+          // unique list, keep order
+          const values = datesPicker.getValues();
+          const seen = new Set(); const dates = values.filter(v=> (seen.has(v)?false:(seen.add(v),true)));
+          return Object.assign(base, { errorDates: dates, errorDate: dates[0] });
+        }
+        return base;
+      }
+    });
   });
 
-  const bottom = document.createElement('div');
-  bottom.style.display='flex'; bottom.style.gap='10px'; bottom.style.marginTop='12px';
-  const saveBtn = document.createElement('button'); saveBtn.className='primary-lg'; saveBtn.textContent='Enregistrer la vérification';
+  const bottom = el('div',{}); Object.assign(bottom.style,{display:'flex', gap:'10px', marginTop:'12px'});
+  const saveBtn = el('button',{className:'primary-lg', text:'Enregistrer la vérification'});
   bottom.appendChild(saveBtn);
 
-  wrap.appendChild(form);
-  wrap.appendChild(bottom);
+  wrap.append(header, form, bottom);
   app.appendChild(wrap);
 
   saveBtn.onclick = async ()=>{
-    // build results
-    const results = {};
-    fields.forEach(f=>{ const v=f.get(); if(v.status) results[f.id] = v; });
-
-    if(Object.keys(results).length===0){
-      if(!confirm('Aucun point coché. Enregistrer quand même ?')) return;
-    }
+    const results = {}; fields.forEach(f=>{ const v=f.get(); if(v.status) results[f.id]=v; });
+    if(Object.keys(results).length===0 && !confirm('Aucun point coché. Enregistrer quand même ?')) return;
 
     const payload = {
       boutique_id: selectedStoreId,
@@ -576,185 +514,117 @@ if(cat.description){
     };
 
     const fnUrl = 'https://vhgfjnnwhwglirnkvacz.supabase.co/functions/v1/create_verif';
-    const res = await fetch(fnUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    const res = await fetch(fnUrl, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     if(!res.ok){
-      const err = await res.json().catch(()=>({}));
+      let err={}; try{ err = await res.json(); }catch(e){}
       alert("Échec de l'enregistrement : " + (err.error || res.status));
       console.error(err);
       return;
     }
-
-
     alert('Vérification enregistrée ✅');
     renderDashboard();
   };
 }
 
-
-// ---- Documents ICC
-const DOCS = (window.DOCS || []); // à remplir plus tard [{title, url}]
+// ---------------------------
+// DOCUMENTS
+// ---------------------------
+const DOCS = (window.DOCS || []);
 
 function renderDocs(){
-  appState = APP.VIEW; 
-  app.innerHTML='';
-  const wrap = document.createElement('div'); 
-  wrap.className = 'history-wrap';
-
-  const header = document.createElement('div');
-  header.className = 'history-header';
-  const title = document.createElement('h2'); title.textContent = 'Documents ICC';
-  const back = document.createElement('button'); back.className='ghost-button'; back.textContent='← Retour';
-  back.onclick = ()=>renderDashboard();
-  /* removed back-precheck */
-  /* removed alignBack */
-
+  appState=APP.VIEW; app.innerHTML='';
+  const wrap = el('div',{className:'history-wrap'});
+  const header = el('div',{className:'history-header'});
+  const title = el('h2',{text:'Documents ICC'});
+  const back = el('button',{className:'ghost-button', text:'← Retour', on:{click:()=>renderDashboard()}});
   header.append(title, back);
-  wrap.appendChild(header);
 
-  const list = document.createElement('div');
-  list.className = 'doc-list';
-
+  const list = el('div',{className:'doc-list'});
   if(!DOCS.length){
-    const empty = document.createElement('div');
-    empty.className='muted';
-    empty.textContent = 'Aucun document défini pour le moment.';
-    list.appendChild(empty);
-  } else {
-    DOCS.forEach(d => {
-      const row = document.createElement('div');
-      row.className='doc-row';
-      const name = document.createElement('div'); name.className='doc-name'; name.textContent = d.title || 'Document';
-      const actions = document.createElement('div'); actions.className='doc-actions';
-
-      const openBtn = document.createElement('button'); openBtn.className='ghost-button'; openBtn.textContent='Ouvrir';
-      openBtn.onclick = ()=>{ if(d.url) window.open(d.url, '_blank'); };
-
-      const printBtn = document.createElement('button'); printBtn.className='ghost-button'; printBtn.textContent='Imprimer';
-      printBtn.onclick = ()=>{ if(d.url){ const w=window.open(d.url, '_blank'); if(w){ w.addEventListener('load', ()=>{ try{ w.print(); }catch(e){} }); } } };
-
+    list.appendChild(el('div',{className:'muted', text:'Aucun document défini pour le moment.'}));
+  }else{
+    DOCS.forEach(d=>{
+      const row = el('div',{className:'doc-row'});
+      const name = el('div',{className:'doc-name', text:(d.title||'Document')});
+      const actions = el('div',{className:'doc-actions'});
+      const openBtn = el('button',{className:'ghost-button', text:'Ouvrir', on:{click:()=>{ if(d.url) window.open(d.url,'_blank'); }}});
+      const printBtn= el('button',{className:'ghost-button', text:'Imprimer', on:{click:()=>{ if(d.url){ const w=window.open(d.url,'_blank'); if(w){ w.addEventListener('load', ()=>{ try{ w.print(); }catch(e){} }); } } }}});
       actions.append(openBtn, printBtn);
       row.append(name, actions);
       list.appendChild(row);
     });
   }
 
-  wrap.appendChild(list);
+  wrap.append(header, list);
   app.appendChild(wrap);
 }
-// ---- History list
+
+// ---------------------------
+// HISTORIQUE (liste)
+// ---------------------------
 async function renderHistoryList(){
-  appState = APP.HIST;
-  app.innerHTML = '';
-  if (!selectedStoreId) return renderLogin();
-  if (!categories.length) await fetchCategories();
+  appState=APP.HIST; app.innerHTML='';
+  if(!selectedStoreId) return renderLogin();
+  if(!categories.length) await fetchCategories();
 
-  const wrap = document.createElement('div');
-  wrap.className = 'history-wrap';
-
-  const header = document.createElement('div');
-  header.className = 'history-header';
-  const title = document.createElement('h2');
-  title.textContent = `Historique — ${selectedStore}`;
-  const back = document.createElement('button');
-  back.className = 'ghost-button';
-  back.textContent = '← Retour au dashboard';
-  back.onclick = () => renderDashboard();
+  const wrap = el('div',{className:'history-wrap'});
+  const header = el('div',{className:'history-header'});
+  const title = el('h2',{text:`Historique — ${selectedStore}`});
+  const back = el('button',{className:'ghost-button', text:'← Retour au dashboard', on:{click:()=>renderDashboard()}});
   header.append(title, back);
-  wrap.appendChild(header);
 
-  const { data, error } = await supabase
-    .from('verifications')
-    .select('*')
-    .eq('boutique_id', selectedStoreId)
-    .order('date', { ascending: false });
-
-  if (error) {
-    const err = document.createElement('div');
-    err.textContent = "Erreur de chargement de l'historique.";
-    wrap.appendChild(err);
-    app.appendChild(wrap);
-    return;
+  const { data, error } = await supabase.from('verifications').select('*').eq('boutique_id', selectedStoreId).order('date',{ascending:false});
+  if(error){
+    wrap.append(header, el('div',{text:"Erreur de chargement de l'historique."}));
+    app.appendChild(wrap); return;
+  }
+  if(!data || !data.length){
+    wrap.append(header, el('div',{className:'empty', text:'Aucun audit pour le moment.'}));
+    app.appendChild(wrap); return;
   }
 
-  if (!data || !data.length){
-    const empty = document.createElement('div');
-    empty.className = 'empty';
-    empty.textContent = 'Aucun audit pour le moment.';
-    wrap.appendChild(empty);
-    app.appendChild(wrap);
-    return;
-  }
-
-  const table = document.createElement('table');
-  table.className = 'history-table';
+  const table = el('table',{className:'history-table'});
   table.innerHTML = `
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Période couverte</th>
-        <th>Vérificateur</th>
-        <th>Commentaires</th>
-      </tr>
-    </thead>
+    <thead><tr><th>Date</th><th>Période couverte</th><th>Vérificateur</th><th>Commentaires</th></tr></thead>
     <tbody></tbody>`;
   const tbody = table.querySelector('tbody');
 
-  data.forEach(v => {
-    const tr = document.createElement('tr');
+  data.forEach(v=>{
+    const tr = el('tr',{});
     tr.innerHTML = `
       <td data-label="Date">${v.date ? toFR(v.date) : '—'}</td>
       <td data-label="Période couverte">${v.periode_couverte || '—'}</td>
       <td data-label="Vérificateur">${v.verificateur || '—'}</td>
       <td data-label="Commentaires" class="muted">${(v.commentaire || '').slice(0,80)}</td>`;
-    tr.style.cursor = 'pointer';
-    tr.onclick = () => renderHistoryDetail(v.id);
+    tr.style.cursor='pointer'; tr.addEventListener('click', ()=>renderHistoryDetail(v.id));
     tbody.appendChild(tr);
   });
 
-  wrap.appendChild(table);
+  wrap.append(header, table);
   app.appendChild(wrap);
 }
 
-// ---- History detail
+// ---------------------------
+// HISTORIQUE (détail)
+// ---------------------------
 async function renderHistoryDetail(verificationId){
-  appState = APP.VIEW;
-  app.innerHTML = '';
-  if (!selectedStoreId) return renderLogin();
+  appState=APP.VIEW; app.innerHTML='';
+  if(!selectedStoreId) return renderLogin();
 
-  const { data, error } = await supabase
-    .from('verifications')
-    .select('*')
-    .eq('id', verificationId)
-    .single();
+  const { data, error } = await supabase.from('verifications').select('*').eq('id', verificationId).single();
 
-  const wrap = document.createElement('div');
-  wrap.className = 'history-wrap';
-
-  const header = document.createElement('div');
-  header.className = 'history-header';
-  const title = document.createElement('h2');
-  title.textContent = `Audit du ${data?.date ? toFR(data.date) : '—'} — ${selectedStore}`;
-  const back = document.createElement('button');
-  back.className = 'ghost-button';
-  back.textContent = "← Retour à l'historique";
-  back.onclick = () => renderHistoryList();
+  const wrap = el('div',{className:'history-wrap'});
+  const header = el('div',{className:'history-header'});
+  const title = el('h2',{text:`Audit du ${ (data && data.date) ? toFR(data.date) : '—'} — ${selectedStore}`});
+  const back = el('button',{className:'ghost-button', text:"← Retour à l'historique", on:{click:()=>renderHistoryList()}});
   header.append(title, back);
-  wrap.appendChild(header);
 
-  if (error || !data){
-    const err = document.createElement('div');
-    err.textContent = 'Impossible de charger le détail.';
-    wrap.appendChild(err);
-    app.appendChild(wrap);
-    return;
+  if(error || !data){
+    wrap.append(header, el('div',{text:'Impossible de charger le détail.'}));
+    app.appendChild(wrap); return;
   }
 
-  const meta = document.createElement('div');
-  meta.className = 'card';
+  const meta = el('div',{className:'card'});
   meta.innerHTML = `
     <h3>Infos</h3>
     <div class="meta-grid">
@@ -762,40 +632,50 @@ async function renderHistoryDetail(verificationId){
       <div><div class="label">Période couverte</div><div>${data.periode_couverte || '—'}</div></div>
       <div><div class="label">Vérificateur</div><div>${data.verificateur || '—'}</div></div>
     </div>`;
-  wrap.appendChild(meta);
 
-  const results = document.createElement('div');
-  results.className = 'card';
-  results.innerHTML = '<h3>Résultats</h3>';
-  const list = document.createElement('div');
-  list.className = 'result-list';
-
-  const catMap = {}; (categories||[]).forEach(c=>catMap[c.id]=c.nom_categorie);
+  const results = el('div',{className:'card', html:'<h3>Résultats</h3>'});
+  const list = el('div',{className:'result-list'});
+  const catMap={}; (categories||[]).forEach(c=>catMap[c.id]=c.nom_categorie);
   const r = data.resultats || {};
-  const items = Object.keys(r).length ? Object.entries(r) : [];
-  if (!items.length){
+  const items = Object.keys(r);
+
+  if(!items.length){
     list.innerHTML = '<div class="empty">Aucun résultat enregistré.</div>';
   } else {
-    items.forEach(([catId, val]) => {
-      const line = document.createElement('div');
-      line.className = 'result-row';
-      const label = catMap[catId] || catId;
+    items.forEach(id=>{
+      const val = r[id];
+      const line = el('div',{className:'result-row'});
+      const label = catMap[id] || id;
       let badge = '—';
       if (val && val.status === 'done')  badge = '✅ Conforme';
       else if (val && val.status === 'error') badge = '❌ Non conforme';
+
+      // dates d'erreur (multi)
+      let dateInfo = '';
+      if(val && val.status==='error'){
+        const listDates = Array.isArray(val.errorDates) ? val.errorDates : (val.errorDate ? [val.errorDate] : []);
+        if(listDates.length){
+          const human = listDates.map(d=>{
+            const l = new Date(d).toLocaleDateString('fr-FR',{weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+            return l.charAt(0).toUpperCase()+l.slice(1);
+          }).join(', ');
+          dateInfo = `<div class="comment">Jours concernés: ${human}</div>`;
+        }
+      }
       const comment = (val && val.comment) ? `<div class="comment">${val.comment}</div>` : '';
-      line.innerHTML = `<div class="res-title">${label}</div><div class="res-badge">${badge}</div>${comment}`;
+
+      line.innerHTML = `<div class="res-title">${label}</div><div class="res-badge">${badge}</div>${dateInfo}${comment}`;
       list.appendChild(line);
     });
   }
+
   results.appendChild(list);
-  wrap.appendChild(results);
+  wrap.append(header, meta, results);
   app.appendChild(wrap);
 }
 
-// ---- Boot
-async function init(){ 
-  try{ await renderLogin(); }catch(e){ console.error(e);} 
-}
-if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); 
-else init();
+// ---------------------------
+// BOOT
+// ---------------------------
+async function init(){ try{ await renderLogin(); }catch(e){ console.error(e);} }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
