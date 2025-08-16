@@ -699,11 +699,18 @@ async function renderHistoryList(){
 }
 
 // HISTORIQUE — détail
-async function renderHistoryDetail(verificationId){
+async function renderHistoryDetail(verification){
   appState=APP.VIEW; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
 
-  const { data, error } = await supabase.from('verifications').select('*').eq('id', verificationId).single();
+  let data = null; let error = null;
+  if (verification && typeof verification === 'object' && !Array.isArray(verification)) {
+    // On a reçu directement l'objet résultat -> pas besoin d'appeler Supabase
+    data = verification;
+  } else {
+    const res = await supabase.from('verifications').select('*').eq('id', verification).single();
+    data = res.data; error = res.error;
+  }
 
   const wrap = el('div',{className:'history-wrap'});
   const header = el('div',{className:'history-header'});
