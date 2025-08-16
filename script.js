@@ -1,45 +1,37 @@
-
+// NOTE: version commentée pour débutant — mêmes fonctionnalités, petits plus d'accessibilité
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 /* =====================================================
-   WFC APP — script optimisé (mêmes fonctionnalités)
+   WFC APP — logique de l'application
    -----------------------------------------------------
-   - Login + Dashboard + Checklist + Historique + Détail
-   - Multi-dates pour "Non conforme" (+ bouton 🗑)
-   - "i" info : infobulle desktop / fiche plein-écran mobile
-   - Nom boutique : MAJUSCULES, centré, avec marge sous le nom
-   - Tableau historique responsive (cartes en mobile)
-   - Compatibilité: pas de ?. ni ??
+   Idée générale : on a UNE page (#app). On affiche dedans
+   différentes "vues" (écrans) : Login, Dashboard, Checklist,
+   Historique, Détail. On passe d'une vue à l'autre en
+   appelant des fonctions (ex: renderLogin(), renderDashboard()).
    ===================================================== */
 
-// ---------------------------
-// 0) CONFIG SUPABASE
-// ---------------------------
+// 0) CONFIG SUPABASE (base de données)
 const SUPABASE_URL = 'https://vhgfjnnwhwglirnkvacz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoZ2Zqbm53aHdnbGlybmt2YWN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ1MjY4ODksImV4cCI6MjA3MDEwMjg4OX0.-JMgOOD6syRvAzBexgUMjxTgNqpH8mhrrDxw0ItmS4w';
+// ⚠️ Clé "anon" = publique, OK pour lecture/écriture contrôlée par règles Supabase.
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ---------------------------
-// 1) ETAT GLOBAL
-// ---------------------------
+// 1) ÉTAT GLOBAL : on mémorise où on est (login, dashboard…) + boutique sélectionnée
 const APP = { LOGIN:'login', DASH:'dash', HIST:'hist', VIEW:'view', PRE:'pre', CHECK:'check' };
 let appState = APP.LOGIN;
 
-let storeList = [];
-let categories = [];
-let selectedStore = '';
+let storeList = [];     // liste des boutiques (id, nom, code)
+let categories = [];    // catégories de la checklist
+let selectedStore = ''; // nom boutique choisie
 let selectedStoreId = null;
 
-const app = document.getElementById('app');
+const app = document.getElementById('app'); // conteneur principal
 
-// ---------------------------
-// 2) HELPERS GÉNÉRIQUES
-// ---------------------------
+// 2) PETITES FONCTIONS PRATIQUES (helpers)
 function isMobile(){ return (window.matchMedia && window.matchMedia('(max-width: 640px)').matches); }
-
 function $(sel, root){ return (root||document).querySelector(sel); }
 function $all(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
-
+// Crée un élément DOM facilement
 function el(tag, props={}, ...children){
   const n = document.createElement(tag);
   if (props) {
@@ -54,17 +46,10 @@ function el(tag, props={}, ...children){
   return n;
 }
 
-function fragment(){ return document.createDocumentFragment(); }
-
-// ---------------------------
-// 3) DATES & PÉRIODES
-// ---------------------------
-const FR_DAYS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-const FR_MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-
+// 3) DATES & PÉRIODES (format FR, calcul des jours d'une période)
 function parseFRDate(str){ const [d,m,y]=str.split('/').map(n=>parseInt(n,10)); return new Date(y,m-1,d); }
-function ymd(d){ const z=new Date(d); z.setHours(12,0,0,0); return z.toISOString().slice(0,10); }
-function toFR(dStr){ const [y,m,d]=dStr.split('-'); return `${d}/${m}/${y}`; }
+function ymd(d){ const z=new Date(d); z.setHours(12,0,0,0); return z.toISOString().slice(0,10); } // ISO: 2025-08-16
+function toFR(dStr){ const [y,m,d]=dStr.split('-'); return `${d}/${m}/${y}`; }                    // FR: 16/08/2025
 function daysBetween(start,end){ const out=[]; const cur=new Date(start); cur.setHours(12,0,0,0); const e=new Date(end); e.setHours(12,0,0,0); while(cur<=e){ out.push(ymd(cur)); cur.setDate(cur.getDate()+1);} return out; }
 function parsePeriodeFR(txt){
   const m=(txt||'').match(/du\s(\d{2}\/\d{2}\/\d{4})\sau\s(\d{2}\/\d{2}\/\d{4})/);
@@ -72,10 +57,7 @@ function parsePeriodeFR(txt){
   return { start: parseFRDate(m[1]), end: parseFRDate(m[2]) };
 }
 
-
-// ---------------------------
-// 3bis) MODULE EMAIL — génération mailto avec sujet + corps
-// ---------------------------
+// 3bis) MODULE EMAIL — prépare un mail avec le récap
 function formatFRDateLong(dStr){
   try{
     const d = new Date(dStr);
@@ -84,11 +66,7 @@ function formatFRDateLong(dStr){
     return s.charAt(0).toUpperCase() + s.slice(1);
   }catch(e){ return dStr; }
 }
-
-function formatEmailSubject(storeName, dateISO){
-  return `WFC — Résultats audit ${storeName} — ${toFR(dateISO)}`;
-}
-
+function formatEmailSubject(storeName, dateISO){ return `WFC — Résultats audit ${storeName} — ${toFR(dateISO)}`; }
 function formatEmailBody({ store, date, periode, verifier, results, categories }){
   const nameById = {}; (categories||[]).forEach(c => nameById[c.id] = c.nom_categorie);
   const lines = [];
@@ -96,12 +74,10 @@ function formatEmailBody({ store, date, periode, verifier, results, categories }
   lines.push(`Date d'audit : ${toFR(date)}`);
   if(periode)   lines.push(`Période couverte : ${periode}`);
   if(verifier)  lines.push(`Vérificateur : ${verifier}`);
-  lines.push('');
-  lines.push('Résultats :');
+  lines.push(''); lines.push('Résultats :');
   const keys = Object.keys(results||{});
-  if(!keys.length){
-    lines.push('- (Aucun point coché)');
-  } else {
+  if(!keys.length){ lines.push('- (Aucun point coché)'); }
+  else {
     keys.forEach(id => {
       const v = results[id] || {};
       const label = nameById[id] || id;
@@ -119,32 +95,22 @@ function formatEmailBody({ store, date, periode, verifier, results, categories }
       if(v.comment){ lines.push(`  Commentaire : ${v.comment}`); }
     });
   }
-  lines.push('');
-  lines.push('— Envoyé depuis WFC APP');
+  lines.push(''); lines.push('— Envoyé depuis WFC APP');
   return lines.join('\n');
 }
-
 function openEmailClient({ to, subject, body }){
   const mailto = `mailto:${encodeURIComponent(to||'')}?subject=${encodeURIComponent(subject||'WFC')}&body=${encodeURIComponent(body||'')}`;
-  try{
-    window.location.href = mailto;
-  }catch(e){
-    // fallback: open in new window
-    window.open(mailto, '_blank');
-  }
+  try{ window.location.href = mailto; } catch(e){ window.open(mailto, '_blank'); }
 }
 
-
-// ---------------------------
-// Success screen after saving a checklist
-// ---------------------------
+// Écran de confirmation après enregistrement de la checklist
 function renderChecklistSuccess(meta, results, categories){
-  appState = APP.DASH; // no specific state, just a neutral view
+  appState = APP.DASH;
   app.innerHTML='';
   const wrap = el('div',{className:'history-wrap'});
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:`Checklist validée ✅`});
-  const back = el('button',{className:'ghost-button', text:'← Retour au dashboard', on:{click:()=>renderDashboard()}});
+  const back = el('button',{className:'ghost-button', attrs:{'aria-label':'Retour au dashboard'}, text:'← Retour au dashboard', on:{click:()=>renderDashboard()}});
   header.append(title, back);
   wrap.appendChild(header);
 
@@ -153,8 +119,7 @@ function renderChecklistSuccess(meta, results, categories){
   card.appendChild(p);
 
   const actions = el('div',{});
-  actions.style.display='flex';
-  actions.style.gap='8px';
+  actions.style.display='flex'; actions.style.gap='8px';
 
   const seeBtn = el('button',{className:'primary-lg', text:'Accéder aux résultats'});
   seeBtn.addEventListener('click', ()=>{
@@ -188,12 +153,9 @@ function renderChecklistSuccess(meta, results, categories){
   app.appendChild(wrap);
 }
 
-// ---------------------------
-// 4) SUPABASE HELPERS
-// ---------------------------
+// 4) SUPABASE : petites fonctions pour lire/écrire
 function getStoreId(name){ const f=storeList.find(s=>s.name===name); return f ? f.id : null; }
 function getStoreCode(name){ const f=storeList.find(s=>s.name===name); return f ? f.code : ''; }
-
 async function fetchStores(){
   const { data } = await supabase.from('boutiques').select('*').order('nom');
   storeList = (data||[]).map(r=>({id:r.id, name:r.nom, code:r.code}));
@@ -203,17 +165,11 @@ async function fetchCategories(){
   categories = (data||[]);
 }
 async function fetchVerifs(storeId){
-  const { data } = await supabase
-    .from('verifications')
-    .select('*')
-    .eq('boutique_id', storeId)
-    .order('date',{ascending:false});
+  const { data } = await supabase.from('verifications').select('*').eq('boutique_id', storeId).order('date',{ascending:false});
   return data||[];
 }
 
-// ---------------------------
-// 5) AGRÉGATIONS (calendrier, stats)
-// ---------------------------
+// 5) AGRÉGATIONS pour le calendrier et stats
 function computeCoveredDays(verifs){
   const set=new Set();
   (verifs||[]).forEach(v=>{
@@ -223,8 +179,6 @@ function computeCoveredDays(verifs){
   });
   return set;
 }
-
-// Supporte errorDates[] (multi), ou fallback sur errorDate
 function computeErrorDays(verifs){
   const set = new Set();
   const map = new Map(); // date => [verificationId,...]
@@ -251,7 +205,6 @@ function computeErrorDays(verifs){
   });
   return { set, map };
 }
-
 function recurringErrors(verifs){
   const counts={};
   verifs.forEach(v=>{ const r=v.resultats||{}; Object.keys(r).forEach(cat=>{ if(r[cat] && r[cat].status==='error') counts[cat]=(counts[cat]||0)+1; }); });
@@ -259,9 +212,7 @@ function recurringErrors(verifs){
   return Object.keys(counts).map(id=>({label:nameMap[id]||id, count:counts[id]})).sort((a,b)=>b.count-a.count).slice(0,3);
 }
 
-// ---------------------------
-// 6) MOBILE INFO SHEET
-// ---------------------------
+// 6) FICHE INFO MOBILE (quand on clique sur ℹ️ sur smartphone)
 function openInfoSheet(titleText, bodyHtml){
   const backdrop = el('div', {className:'sheet-backdrop'});
   const sheet = el('div', {className:'sheet', html:`
@@ -280,29 +231,45 @@ function openInfoSheet(titleText, bodyHtml){
   requestAnimationFrame(()=>{ backdrop.classList.add('show'); sheet.classList.add('show'); });
 }
 
-// =====================================================
-// VUES
-// =====================================================
+// ===== VUES (écrans) =====
 
-// ---------------------------
-// LOGIN
-// ---------------------------
+// Loader simple (super court) — utilisé à la connexion
+function showLoadingOverlay(text='Connexion…'){
+  let ov = document.getElementById('loading-overlay');
+  if(!ov){
+    ov = el('div',{attrs:{id:'loading-overlay'}, className:'loading-overlay'});
+    const box = el('div',{className:'loading-box'});
+    const sp = el('div',{className:'spinner'});
+    const tx = el('div',{className:'loading-text', text:text});
+    box.append(sp, tx); ov.appendChild(box);
+    document.body.appendChild(ov);
+  }else{
+    const tx = ov.querySelector('.loading-text'); if(tx) tx.textContent = text;
+  }
+  ov.style.display = 'flex';
+}
+function hideLoadingOverlay(){
+  const ov = document.getElementById('loading-overlay');
+  if(ov) ov.style.display = 'none';
+}
+
+// LOGIN — choisir la boutique + entrer son code
 async function renderLogin(){
   appState=APP.LOGIN; app.innerHTML='';
   if(!storeList.length) await fetchStores();
 
   const container = el('div',{className:'container'});
   const wrap = el('div',{className:'login-wrap'});
-  const card = el('div',{className:'login-card'});
+  const card = el('div',{className:'login-card', attrs:{'aria-label':'Carte de connexion'}});
 
   const avatar = el('div',{className:'login-avatar', html:'<img src="favicon.png" alt="logo" class="login-logo">'});
   const row1 = el('div',{className:'form-row', html:'<div class="icon-cell">🏬</div>'});
-  const sel  = el('select');
+  const sel  = el('select', { attrs:{ 'aria-label':'Choisir une boutique' } });
   sel.innerHTML = '<option value="">Choisir une boutique</option>' + storeList.map(s=>`<option value="${s.name}">${s.name}</option>`).join('');
   row1.appendChild(sel);
 
   const row2 = el('div',{className:'form-row', html:'<div class="icon-cell">🔒</div>'});
-  const code = el('input', {attrs:{type:'password', placeholder:'Code boutique'}});
+  const code = el('input', {attrs:{type:'password', placeholder:'Code boutique', 'aria-label':'Code boutique', autocomplete:'off'}});
   row2.appendChild(code);
 
   const err = el('div',{className:'err hidden', text:'Code incorrect'});
@@ -311,6 +278,7 @@ async function renderLogin(){
   card.append(avatar,row1,row2,err,btn);
   wrap.appendChild(card); container.appendChild(wrap); app.appendChild(container);
 
+  // active/désactive le bouton selon sélection + code
   function check(){
     const exp = sel.value ? getStoreCode(sel.value) : null;
     const ok = !!sel.value && !!code.value && (code.value===exp);
@@ -320,16 +288,18 @@ async function renderLogin(){
   }
   sel.addEventListener('change',check); code.addEventListener('input',check);
 
+  // focus direct sur la liste pour aller vite
+  setTimeout(()=> sel.focus(), 0);
+
   btn.addEventListener('click', async ()=>{
     selectedStore = sel.value;
     selectedStoreId = getStoreId(selectedStore);
-    await renderDashboard();
+    try{ showLoadingOverlay('Connexion…'); await renderDashboard(); }
+    finally{ hideLoadingOverlay(); }
   });
 }
 
-// ---------------------------
-// DASHBOARD
-// ---------------------------
+// DASHBOARD — résumé + accès aux actions
 async function renderDashboard(){
   appState=APP.DASH; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
@@ -343,7 +313,7 @@ async function renderDashboard(){
   const container = el('div',{className:'container'});
   const dash = el('div',{className:'dashboard'});
 
-  // Sidebar
+  // Colonne gauche
   const side = el('aside',{className:'sidebar'});
   side.innerHTML = `<div class="store-name" style="margin-bottom:12px; text-align:center;">${selectedStore.toUpperCase()}</div>`;
   const menu = el('div',{className:'menu'});
@@ -352,7 +322,7 @@ async function renderDashboard(){
   const bBack  = el('button',{className:'ghost-button', text:'Changer de boutique'});
   menu.append(bStart,bHist,bBack); side.appendChild(menu);
 
-  // Content tiles
+  // Zone droite (tuiles + calendrier + historique court)
   const content = el('section',{className:'content'});
   const tAud = el('div',{className:'tile', html:`<h3>Audits réalisés</h3><div class="big">${verifs.length}</div>`});
   const tErr = el('div',{className:'tile', html:`<h3>Erreurs récurrentes</h3>${ errorsTop.length ? '<ul>'+errorsTop.map(e=>`<li>${e.label} — <b>${e.count}</b></li>`).join('')+'</ul>' : '<div>—</div>'}`});
@@ -360,15 +330,15 @@ async function renderDashboard(){
   tDocs.style.cursor='pointer'; tDocs.addEventListener('click', ()=>renderDocs());
   content.append(tAud,tErr,tDocs);
 
-  // Calendar
+  // Calendrier
   const cal = el('div',{className:'card calendar'});
-  const calHead = el('div',{className:'cal-head', html:'<div class="nav"><button class="prev">◀</button><button class="next">▶</button></div><div class="title"></div>'});
+  const calHead = el('div',{className:'cal-head', html:'<div class="nav"><button class="prev" aria-label="Mois précédent">◀</button><button class="next" aria-label="Mois suivant">▶</button></div><div class="title"></div>'});
   const calBody = el('div');
   cal.append(calHead,calBody);
   const legend = el('div',{className:'calendar-legend', html:'<span class="legend-dot legend-covered"></span> Jour contrôlé <span class="legend-dot legend-error"></span> Erreur détectée'});
   cal.appendChild(legend);
 
-  // History teaser
+  // Historique court
   const histCard = el('div',{className:'card history', html:'<h3>Historique</h3>'});
   if(!verifs.length){ histCard.innerHTML += '<div>Aucun audit.</div>'; }
   else verifs.slice(0,6).forEach(v=> histCard.appendChild(el('div',{className:'row', text:`${v.date ? toFR(v.date) : '—'} — ${v.verificateur} (${v.periode_couverte||''})`})));
@@ -377,7 +347,7 @@ async function renderDashboard(){
   container.appendChild(dash);
   app.appendChild(container);
 
-  // Calendar render
+  // Rendu du calendrier (simple tableau)
   let y=new Date().getFullYear(), m=new Date().getMonth();
   const title=calHead.querySelector('.title');
   function renderMonth(){
@@ -422,9 +392,7 @@ async function renderDashboard(){
   bStart.onclick = ()=>renderPreCheck();
 }
 
-// ---------------------------
-// PRÉ-CHECK (date/période/vérificateur)
-// ---------------------------
+// PRÉ-CHECK — choisir la date, la période calculée et le vérificateur
 async function renderPreCheck(){
   appState=APP.PRE; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
@@ -432,7 +400,6 @@ async function renderPreCheck(){
 
   function badge(text){ return el('span',{text, style:{padding:'8px 12px', background:'#f1f5ff', border:'1px solid #e5e7eb', borderRadius:'999px', fontWeight:'600', fontSize:'14px'}}); }
   const dateISO = ymd(new Date());
-
   function computePeriod(iso){
     const d = new Date(iso); const end = new Date(d); end.setDate(end.getDate()-1);
     const start = new Date(end); start.setDate(start.getDate()-6);
@@ -455,7 +422,7 @@ async function renderPreCheck(){
   const dateInput = el('input',{attrs:{type:'date'}, className:'input-pill'}); dateInput.value=dateISO;
   colDate.appendChild(dateInput); grid.appendChild(colDate);
 
-  // Période (badges non éditables)
+  // Période (non éditable – affichée en badges)
   const colFrom = el('div',{}); colFrom.innerHTML = '<div class="label label-period">Période du</div>'; const fromBadge = badge(per.startFR); colFrom.appendChild(fromBadge); grid.appendChild(colFrom);
   const colTo   = el('div',{}); colTo.innerHTML   = '<div class="label label-period">au</div>';    const toBadgeEl  = badge(per.endFR);   colTo.appendChild(toBadgeEl);    grid.appendChild(colTo);
 
@@ -472,17 +439,18 @@ async function renderPreCheck(){
   wrap.append(header, card);
   app.appendChild(wrap);
 
-  // Enable button
+  // Bouton actif seulement quand le prénom est rempli
   function updateBtn(){ startBtn.disabled = !whoInput.value.trim(); }
   whoInput.addEventListener('input', updateBtn); updateBtn();
 
-  // Update period on change
+  // Recalcule la période si on change la date
   dateInput.addEventListener('change', ()=>{ per = computePeriod(dateInput.value); fromBadge.textContent=per.startFR; toBadgeEl.textContent=per.endFR; });
 
   startBtn.onclick = async ()=>{
     const d = dateInput.value; const who = whoInput.value.trim();
     if(!d || !who){ alert('Merci de renseigner la date et le prénom.'); return; }
 
+    // Empêche les doublons pour la même date
     const { data:existing } = await supabase.from('verifications').select('id').eq('boutique_id', selectedStoreId).eq('date', d).maybeSingle();
     if(existing){
       if(confirm('Une vérification existe déjà pour cette date. Voulez-vous consulter le détail ?')) return renderHistoryDetail(existing.id);
@@ -494,9 +462,7 @@ async function renderPreCheck(){
   };
 }
 
-// ---------------------------
-// CHECKLIST
-// ---------------------------
+// CHECKLIST — on coche Conforme / Non conforme + commentaires
 function renderChecklist(meta){
   appState=APP.CHECK; app.innerHTML='';
 
@@ -507,9 +473,27 @@ function renderChecklist(meta){
   header.append(title, back);
 
   const form = el('div',{className:'result-list'});
+
+  // Barre de progression (combien de points remplis)
+  const progWrap = el('div',{className:'progress-wrap'});
+  const progLabel = el('div',{className:'progress-label', text:'0% complété'});
+  const prog = el('div',{className:'progress'});
+  const progBar = el('div',{className:'progress-bar'});
+  prog.appendChild(progBar);
+  progWrap.append(progLabel, prog);
+
   const activeCats = (categories||[]).filter(c=>c.actif!==false);
   const fields = [];
 
+  function updateChecklistProgress(){
+    const total = activeCats.length || 1;
+    const count = fields.reduce((acc,f)=>{ const v=f.get(); return acc + (v && v.status ? 1 : 0); }, 0);
+    const pct = Math.round((count/total)*100);
+    if(progBar){ progBar.style.width = pct + '%'; }
+    if(progLabel){ progLabel.textContent = `${pct}% complété • ${count}/${total}`; }
+  }
+
+  // Petit sélecteur de dates (on peut ajouter plusieurs jours pour une non-conformité)
   function buildDatePickerList(){
     const wrap = el('div',{});
     const list = el('div',{});
@@ -534,11 +518,9 @@ function renderChecklist(meta){
       return line;
     }
 
-    // label
     const lbl = el('div',{text:'Jours de détection (dans la période)'}); Object.assign(lbl.style,{fontSize:'12px', color:'#475569', margin:'8px 0 4px'});
     wrap.append(lbl, list, addBtn);
 
-    // ensure at least one picker
     function ensure(){ if(!list.querySelector('select')) list.appendChild(buildOne()); }
     ensure();
     addBtn.addEventListener('click', ()=> list.appendChild(buildOne()));
@@ -550,6 +532,7 @@ function renderChecklist(meta){
     const row = el('div',{className:'result-row'});
     const title = el('div',{className:'res-title', text:cat.nom_categorie});
 
+    // Info-bulle (desktop) / fiche (mobile)
     if(cat.description){
       const infoWrap = el('span',{className:'info-wrap'});
       const info = el('span',{className:'info-icon', text:'ℹ️'});
@@ -559,7 +542,7 @@ function renderChecklist(meta){
       if(isMobile()){
         info.addEventListener('click', (e)=>{
           e.preventDefault(); e.stopPropagation();
-          const html = `<div class="tip-lines">${(cat.description||'').replace(/\\n/g,'<br>')}</div>`;
+          const html = `<div class="tip-lines">${(cat.description||'').replace(/\n/g,'<br>')}</div>`;
           openInfoSheet(cat.nom_categorie||'Informations', html);
         });
       } else {
@@ -585,6 +568,7 @@ function renderChecklist(meta){
       ok.style.background = s==='done' ? '#f0fff4' : '#fff';
       ko.style.background = s==='error' ? '#fff0f0' : '#fff';
       dateWrap.style.display = s==='error' ? 'block' : 'none';
+      updateChecklistProgress();
     }
     ok.addEventListener('click', ()=>setSel('done'));
     ko.addEventListener('click', ()=>setSel('error'));
@@ -598,7 +582,6 @@ function renderChecklist(meta){
       get: ()=>{
         const base = { status: status, comment: (comment.value||'').trim() };
         if(status==='error'){
-          // unique list, keep order
           const values = datesPicker.getValues();
           const seen = new Set(); const dates = values.filter(v=> (seen.has(v)?false:(seen.add(v),true)));
           return Object.assign(base, { errorDates: dates, errorDate: dates[0] });
@@ -608,6 +591,7 @@ function renderChecklist(meta){
     });
   });
 
+  updateChecklistProgress();
   const bottom = el('div',{}); Object.assign(bottom.style,{display:'flex', gap:'10px', marginTop:'12px'});
   const saveBtn = el('button',{className:'primary-lg', text:'Enregistrer la vérification'});
   bottom.appendChild(saveBtn);
@@ -615,6 +599,7 @@ function renderChecklist(meta){
   wrap.append(header, form, bottom);
   app.appendChild(wrap);
 
+  // Enregistrement via une Function Supabase (évite d'exposer la table ici)
   saveBtn.onclick = async ()=>{
     const results = {}; fields.forEach(f=>{ const v=f.get(); if(v.status) results[f.id]=v; });
     if(Object.keys(results).length===0 && !confirm('Aucun point coché. Enregistrer quand même ?')) return;
@@ -638,14 +623,11 @@ function renderChecklist(meta){
       return;
     }
     renderChecklistSuccess(meta, results, categories);
-};
+  };
 }
 
-// ---------------------------
-// DOCUMENTS
-// ---------------------------
+// DOCUMENTS — simple liste de liens
 const DOCS = (window.DOCS || []);
-
 function renderDocs(){
   appState=APP.VIEW; app.innerHTML='';
   const wrap = el('div',{className:'history-wrap'});
@@ -669,14 +651,11 @@ function renderDocs(){
       list.appendChild(row);
     });
   }
-
   wrap.append(header, list);
   app.appendChild(wrap);
 }
 
-// ---------------------------
-// HISTORIQUE (liste)
-// ---------------------------
+// HISTORIQUE — liste
 async function renderHistoryList(){
   appState=APP.HIST; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
@@ -719,9 +698,7 @@ async function renderHistoryList(){
   app.appendChild(wrap);
 }
 
-// ---------------------------
-// HISTORIQUE (détail)
-// ---------------------------
+// HISTORIQUE — détail
 async function renderHistoryDetail(verificationId){
   appState=APP.VIEW; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
@@ -733,19 +710,19 @@ async function renderHistoryDetail(verificationId){
   const title = el('h2',{text:`Audit du ${ (data && data.date) ? toFR(data.date) : '—'} — ${selectedStore}`});
   const back = el('button',{className:'ghost-button', text:"← Retour à l'historique", on:{click:()=>renderHistoryList()}});
   const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
-emailBtn.addEventListener('click', ()=>{
-  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
-  const body = formatEmailBody({
-    store: selectedStore,
-    date: (data && data.date) ? data.date : ymd(new Date()),
-    periode: data ? data.periode_couverte : '',
-    verifier: data ? data.verificateur : '',
-    results: data ? (data.resultats || {}) : {},
-    categories
+  emailBtn.addEventListener('click', ()=>{
+    const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
+    const body = formatEmailBody({
+      store: selectedStore,
+      date: (data && data.date) ? data.date : ymd(new Date()),
+      periode: data ? data.periode_couverte : '',
+      verifier: data ? data.verificateur : '',
+      results: data ? (data.resultats || {}) : {},
+      categories
+    });
+    openEmailClient({ subject, body });
   });
-  openEmailClient({ subject, body });
-});
-header.append(title, back, emailBtn);
+  header.append(title, back, emailBtn);
 
   if(error || !data){
     wrap.append(header, el('div',{text:'Impossible de charger le détail.'}));
@@ -802,8 +779,6 @@ header.append(title, back, emailBtn);
   app.appendChild(wrap);
 }
 
-// ---------------------------
-// BOOT
-// ---------------------------
+// DÉMARRAGE
 async function init(){ try{ await renderLogin(); }catch(e){ console.error(e);} }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
