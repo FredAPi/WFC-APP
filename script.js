@@ -72,6 +72,68 @@ function parsePeriodeFR(txt){
   return { start: parseFRDate(m[1]), end: parseFRDate(m[2]) };
 }
 
+
+// ---------------------------
+// 3bis) MODULE EMAIL — génération mailto avec sujet + corps
+// ---------------------------
+function formatFRDateLong(dStr){
+  try{
+    const d = new Date(dStr);
+    const opts = { weekday:'long', day:'2-digit', month:'long', year:'numeric' };
+    let s = d.toLocaleDateString('fr-FR', opts);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }catch(e){ return dStr; }
+}
+
+function formatEmailSubject(storeName, dateISO){
+  return `WFC — Résultats audit ${storeName} — ${toFR(dateISO)}`;
+}
+
+function formatEmailBody({ store, date, periode, verifier, results, categories }){
+  const nameById = {}; (categories||[]).forEach(c => nameById[c.id] = c.nom_categorie);
+  const lines = [];
+  lines.push(`Boutique : ${store}`);
+  lines.push(`Date d'audit : ${toFR(date)}`);
+  if(periode)   lines.push(`Période couverte : ${periode}`);
+  if(verifier)  lines.push(`Vérificateur : ${verifier}`);
+  lines.push('');
+  lines.push('Résultats :');
+  const keys = Object.keys(results||{});
+  if(!keys.length){
+    lines.push('- (Aucun point coché)');
+  } else {
+    keys.forEach(id => {
+      const v = results[id] || {};
+      const label = nameById[id] || id;
+      let status = '—';
+      if(v.status === 'done')  status = '✅ Conforme';
+      if(v.status === 'error') status = '❌ Non conforme';
+      lines.push(`- ${label} : ${status}`);
+      if(v.status === 'error'){
+        const list = Array.isArray(v.errorDates) ? v.errorDates : (v.errorDate ? [v.errorDate] : []);
+        if(list.length){
+          const human = list.map(ds => formatFRDateLong(ds)).join(', ');
+          lines.push(`  Jours concernés : ${human}`);
+        }
+      }
+      if(v.comment){ lines.push(`  Commentaire : ${v.comment}`); }
+    });
+  }
+  lines.push('');
+  lines.push('— Envoyé depuis WFC APP');
+  return lines.join('\n');
+}
+
+function openEmailClient({ to, subject, body }){
+  const mailto = `mailto:${encodeURIComponent(to||'')}?subject=${encodeURIComponent(subject||'WFC')}&body=${encodeURIComponent(body||'')}`;
+  try{
+    window.location.href = mailto;
+  }catch(e){
+    // fallback: open in new window
+    window.open(mailto, '_blank');
+  }
+}
+
 // ---------------------------
 // 4) SUPABASE HELPERS
 // ---------------------------
@@ -328,7 +390,20 @@ async function renderPreCheck(){
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:`Informations avant vérification — ${selectedStore}`});
   const back = el('button',{className:'ghost-button', text:'← Retour', on:{click:()=>renderDashboard()}});
-  header.append(title, back);
+  const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
+emailBtn.addEventListener('click', ()=>{
+  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
+  const body = formatEmailBody({
+    store: selectedStore,
+    date: (data && data.date) ? data.date : ymd(new Date()),
+    periode: data ? data.periode_couverte : '',
+    verifier: data ? data.verificateur : '',
+    results: data ? (data.resultats || {}) : {},
+    categories
+  });
+  openEmailClient({ subject, body });
+});
+header.append(title, back, emailBtn);
 
   const card = el('div',{className:'card pre-card'});
   const grid = el('div',{className:'meta-grid'});
@@ -388,7 +463,20 @@ function renderChecklist(meta){
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:`Checklist — ${selectedStore} (${toFR(meta.date)})`});
   const back = el('button',{className:'ghost-button', text:'← Annuler', on:{click:()=>renderDashboard()}});
-  header.append(title, back);
+  const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
+emailBtn.addEventListener('click', ()=>{
+  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
+  const body = formatEmailBody({
+    store: selectedStore,
+    date: (data && data.date) ? data.date : ymd(new Date()),
+    periode: data ? data.periode_couverte : '',
+    verifier: data ? data.verificateur : '',
+    results: data ? (data.resultats || {}) : {},
+    categories
+  });
+  openEmailClient({ subject, body });
+});
+header.append(title, back, emailBtn);
 
   const form = el('div',{className:'result-list'});
   const activeCats = (categories||[]).filter(c=>c.actif!==false);
@@ -521,8 +609,22 @@ function renderChecklist(meta){
       console.error(err);
       return;
     }
-    alert('Vérification enregistrée ✅');
-    renderDashboard();
+    const sendNow = confirm(`Vérification enregistrée ✅
+
+Voulez-vous envoyer les résultats par e‑mail maintenant ?`);
+if(sendNow){
+  const subject = formatEmailSubject(selectedStore, meta.date);
+  const body = formatEmailBody({
+    store: selectedStore,
+    date: meta.date,
+    periode: meta.periode,
+    verifier: meta.who,
+    results,
+    categories
+  });
+  openEmailClient({ subject, body });
+}
+renderDashboard();
   };
 }
 
@@ -537,7 +639,20 @@ function renderDocs(){
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:'Documents ICC'});
   const back = el('button',{className:'ghost-button', text:'← Retour', on:{click:()=>renderDashboard()}});
-  header.append(title, back);
+  const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
+emailBtn.addEventListener('click', ()=>{
+  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
+  const body = formatEmailBody({
+    store: selectedStore,
+    date: (data && data.date) ? data.date : ymd(new Date()),
+    periode: data ? data.periode_couverte : '',
+    verifier: data ? data.verificateur : '',
+    results: data ? (data.resultats || {}) : {},
+    categories
+  });
+  openEmailClient({ subject, body });
+});
+header.append(title, back, emailBtn);
 
   const list = el('div',{className:'doc-list'});
   if(!DOCS.length){
@@ -571,7 +686,20 @@ async function renderHistoryList(){
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:`Historique — ${selectedStore}`});
   const back = el('button',{className:'ghost-button', text:'← Retour au dashboard', on:{click:()=>renderDashboard()}});
-  header.append(title, back);
+  const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
+emailBtn.addEventListener('click', ()=>{
+  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
+  const body = formatEmailBody({
+    store: selectedStore,
+    date: (data && data.date) ? data.date : ymd(new Date()),
+    periode: data ? data.periode_couverte : '',
+    verifier: data ? data.verificateur : '',
+    results: data ? (data.resultats || {}) : {},
+    categories
+  });
+  openEmailClient({ subject, body });
+});
+header.append(title, back, emailBtn);
 
   const { data, error } = await supabase.from('verifications').select('*').eq('boutique_id', selectedStoreId).order('date',{ascending:false});
   if(error){
@@ -617,7 +745,20 @@ async function renderHistoryDetail(verificationId){
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:`Audit du ${ (data && data.date) ? toFR(data.date) : '—'} — ${selectedStore}`});
   const back = el('button',{className:'ghost-button', text:"← Retour à l'historique", on:{click:()=>renderHistoryList()}});
-  header.append(title, back);
+  const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
+emailBtn.addEventListener('click', ()=>{
+  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
+  const body = formatEmailBody({
+    store: selectedStore,
+    date: (data && data.date) ? data.date : ymd(new Date()),
+    periode: data ? data.periode_couverte : '',
+    verifier: data ? data.verificateur : '',
+    results: data ? (data.resultats || {}) : {},
+    categories
+  });
+  openEmailClient({ subject, body });
+});
+header.append(title, back, emailBtn);
 
   if(error || !data){
     wrap.append(header, el('div',{text:'Impossible de charger le détail.'}));
