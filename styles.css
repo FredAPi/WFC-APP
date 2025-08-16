@@ -1,7 +1,4 @@
-/* ===== Styles WFC — version commentée =====
-   Idée : on donne une apparence propre et responsive (mobile/desktop).
-   Vous pouvez lire en diagonale : les titres de section suffisent pour comprendre.
-======================================================== */
+/* ===== ICC Checker — full login + dashboard ===== */
 :root{
   --primary:#0ea5ea;
   --secondary:#6a11cb;
@@ -17,14 +14,14 @@
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:linear-gradient(180deg,#eef4ff,#f8fafc) fixed}
-
-/* ---------- En-tête & pied de page ---------- */
 .site-header{padding:18px 20px 8px;background:linear-gradient(135deg,#009fe3,#6a11cb);color:#fff;text-align:left}
 .site-header .brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:28px}
+.site-header img{width:34px;height:34px;border-radius:10px}
 .subtitle{margin:6px 0 0 0;opacity:.9}
+
 .site-footer{padding:16px;text-align:center;color:#6b7280}
 
-/* ---------- Login ---------- */
+/* ---------- LOGIN ---------- */
 .login-wrap{display:flex;align-items:center;justify-content:center;min-height:60vh;padding:24px}
 .login-card{width:100%;max-width:520px;background:var(--glass);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:22px;box-shadow:var(--shadow);padding:26px}
 .login-avatar{width:96px;height:96px;margin:-58px auto 16px;border-radius:50%;display:grid;place-items:center;background:#fff;border:2px solid #eef2ff;box-shadow:0 10px 26px rgba(0,0,0,.09);overflow:hidden}
@@ -36,11 +33,12 @@ body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
 .login-button{width:100%;padding:13px 14px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--secondary),var(--accent));color:#fff;font-weight:800;letter-spacing:.2px;box-shadow:0 14px 30px rgba(16,185,129,.25);cursor:pointer}
 .hidden{display:none!important}
 
-/* ---------- Layout Dashboard ---------- */
+/* ---------- DASHBOARD ---------- */
 .container{max-width:1400px;margin:24px auto;padding:0 20px}
 .dashboard{display:grid;grid-template-columns:300px 1fr;gap:20px}
 .sidebar{background:var(--glass);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
-.store-name{font-weight:900;margin-bottom:4px;text-transform:uppercase;text-align:center}
+.store-name{font-weight:900;margin-bottom:4px}
+.store-code{color:var(--muted);font-size:13px;margin-bottom:14px}
 .menu{display:grid;gap:12px}
 .primary-lg{padding:12px 14px;border:none;border-radius:14px;background:linear-gradient(135deg,var(--secondary),var(--accent));color:#fff;font-weight:800;box-shadow:0 14px 30px rgba(16,185,129,.25);cursor:pointer}
 .ghost-button{padding:10px 12px;border-radius:12px;border:1px dashed #c7cbe6;background:#fff;cursor:pointer;color:#374151}
@@ -57,19 +55,15 @@ body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
 .calendar{grid-column:span 8}
 .history{grid-column:span 4}
 
-/* ---------- Calendrier ---------- */
+/* ---------- CALENDAR ---------- */
 .calendar .cal-head{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff;border-radius:12px;padding:10px 12px;margin-bottom:10px}
 .calendar .nav{display:flex;gap:8px}
 .calendar .nav button{border:none;background:rgba(255,255,255,.22);color:#fff;border-radius:10px;padding:8px 10px;cursor:pointer}
 .calendar table{width:100%;border-collapse:collapse}
 .calendar th,.calendar td{text-align:center;padding:6px;color:#334155}
 .calendar td span{display:inline-block;min-width:28px;line-height:28px;border-radius:50%}
+.day-today span{outline:2px solid var(--primary);outline-offset:2px}
 .day-covered span{background:#10b981;color:#fff}
-.calendar-legend{display:flex;align-items:center;gap:8px;margin-top:10px;color:#334155;font-size:14px}
-.calendar-legend .legend-dot{width:12px;height:12px;border-radius:3px;background:#10b981;display:inline-block}
-.calendar td.day-error::after{content:'';display:block;width:6px;height:6px;border-radius:50%;background: var(--danger);margin:4px auto 0}
-.calendar td.clickable{cursor:pointer}
-.calendar td.clickable:hover span{transform:scale(1.04)}
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px){
@@ -79,10 +73,13 @@ body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
   .calendar,.history{grid-column:span 1}
 }
 
-/* ---------- Pages "History" et "Checklist" ---------- */
-.history-wrap{max-width:1200px;margin:24px auto;padding:0 16px;display:grid;gap:16px}
+/* legend calendar */
+.calendar-legend{display:flex;align-items:center;gap:8px;margin-top:10px;color:#334155;font-size:14px}
+.calendar-legend .legend-dot{width:12px;height:12px;border-radius:3px;background:#10b981;display:inline-block}
+
+/* ===== History ===== */
+.history-wrap{max-width:1100px;margin:24px auto;padding:0 16px;display:grid;gap:16px}
 .history-header{display:flex;align-items:center;justify-content:space-between}
-.history-header h2{margin:0 0 16px 0;flex:1}
 .history-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08)}
 .history-table th,.history-table td{padding:12px 14px;border-bottom:1px solid #eef2f7;text-align:left}
 .history-table tr:hover{background:#f9fbff}
@@ -90,88 +87,348 @@ body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
 .meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .meta-grid .label{color:#6b7280;font-size:13px}
 .result-list{display:grid;gap:10px}
-.result-row{border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:12px;overflow:visible}
-.result-row .res-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600;margin-bottom:4px}
-.res-title .info-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:#eef2ff;color:#1f2937;font-size:12px;line-height:1;transform: translateY(-1px)}
+.result-row{border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:12px}
+.result-row .res-title{font-weight:600;margin-bottom:4px}
+/* Mobile polish: align the ℹ️ icon with the category label */
+.result-row .res-title{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.res-title .info-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:18px;
+  height:18px;
+  border-radius:999px;
+  background:#eef2ff;
+  color:#1f2937;
+  font-size:12px;
+  line-height:1;
+  transform: translateY(-1px); /* nudge up to avoid "dépasse" */
+}
+
 .result-row .comment{margin-top:6px;color:#374151;background:#f8fafc;border:1px dashed #e5e7eb;border-radius:8px;padding:8px}
 
-/* Info-bulles (desktop) */
+
+/* === Tooltip override (scoped) — no layout impact === */
 .res-title .info-wrap{ position:relative; display:inline-flex; }
 .res-title .info-wrap .tooltip{
-  position:absolute; left:100%; top:50%; transform: translate(8px, -50%);
-  background:#111; color:#fff; padding:12px 14px; border-radius:10px; font-size:13px; line-height:1.5;
+  position:absolute;
+  left:100%;
+  top:50%;
+  transform: translate(8px, -50%);
+  background:#111;
+  color:#fff;
+  padding:12px 14px;
+  border-radius:10px;
+  font-size:13px;
+  line-height:1.5;
   box-shadow: 0 18px 38px rgba(2,6,23,.12);
-  width:max-content; max-width:650px;
-  display:none; z-index:9999; white-space:pre-line;
+  width:max-content;          /* shrink-to-fit */
+  max-width:650px;            /* DEMANDE: plus large */
+  display:none;
+  z-index:9999;
+  white-space:pre-line;       /* respecte 
+ */
+  word-break:normal;
 }
 .res-title .info-wrap .tooltip.show{ display:block; }
-
-/* Responsive table "History" (cartes en mobile) */
-@media (max-width: 640px){
-  .history-table, .history-table thead, .history-table tbody, .history-table th, .history-table td, .history-table tr{ display:block; width:100%; }
-  .history-table thead{ display:none; }
-  .history-table tr{ margin: 0 0 12px 0; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#fff; }
-  .history-table td{ border:none; border-bottom:1px solid #eef2f7; padding:10px 14px; text-align:left; white-space:normal; word-break:break-word; }
-  .history-table td:last-child{ border-bottom:none; }
-  .history-table td::before{ content: attr(data-label); display:block; font-size:12px; color:#6b7280; margin-bottom:4px; }
-  /* Info-bulle adaptée mobile */
-  .card, .result-row { overflow: visible; }
-  .info-wrap .tooltip{
-    left:50% !important; transform: translateX(-50%) !important; top: calc(100% + 10px) !important;
-    max-width: min(92vw, 380px); width: max-content; white-space: normal; overflow-wrap: anywhere; z-index: 9999;
-    padding: 12px 14px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+@media (max-width:640px){
+  .res-title .info-wrap .tooltip{
+    left:0; top:100%; transform:translate(0,8px);
+    max-width:calc(100vw - 20px);
   }
-  .info-wrap .tooltip::before{ content:""; position:absolute; top:-6px; left:50%; transform:translateX(-50%); border-left:6px solid transparent; border-right:6px solid transparent; border-bottom:6px solid rgba(0,0,0,0.8); }
+}
+/* éviter clipping éventuel du tooltip */
+.result-row{ overflow:visible; }
+
+
+/* Erreur: petit dot rouge sous le jour */
+.calendar td.day-error::after{
+  content:'';
+  display:block;
+  width:6px; height:6px;
+  border-radius:50%;
+  background: var(--danger);
+  margin:4px auto 0;
+}
+.calendar-legend .legend-covered{ background:#10b981; border-radius:3px; width:12px; height:12px;}
+.calendar-legend .legend-error{ background: var(--danger); border-radius:50%; width:10px; height:10px;}
+
+
+/* clickable days */
+.calendar td.clickable{cursor:pointer}
+.calendar td.clickable:hover span{transform:scale(1.04)}
+
+
+/* ===== Pre-check polish ===== */
+.pre-card{
+  background: rgba(255,255,255,.92);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 30px 60px rgba(2,6,23,.10);
+  padding: 22px;
+}
+.pre-card .meta-grid{
+  grid-template-columns: repeat(4, minmax(180px,1fr));
+}
+@media (max-width: 900px){
+  .pre-card .meta-grid{ grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px){
+  .pre-card .meta-grid{ grid-template-columns: 1fr; }
+}
+.input-pill{
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #d8def0;
+  background: #f8fbff;
+  outline: none;
+  font-weight: 600;
+  color: #1f2937;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6);
+}
+.input-pill:focus{ border-color: #a9b7ff; background:#ffffff; box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+
+.history-header h2{
+  font-size: clamp(20px, 2.2vw, 32px);
+  letter-spacing: .2px;
+}
+.history-header .ghost-button{ border-style: dashed; }
+
+
+/* Fix for period labels spacing */
+.meta-grid .label {
+  white-space: nowrap;
+}
+.meta-grid .label-period {
+  margin-right: 4px;
+}
+.meta-grid .period-badge {
+  display: inline-block;
+  margin-left: 4px;
 }
 
-/* Fiche info mobile (sheet) */
+/* Header tidy: title on left, back on far right of container */
+.history-wrap{ max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+.history-header{ display:flex; align-items:center; justify-content:space-between; }
+.history-header h2{ margin: 0 0 16px 0; flex:1; }
+
+
+/* === Patch pré-check ciblé === */
+
+/* 1) Bouton retour aligné sur le bord droit de la carte blanche */
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+.history-header h2 {
+  margin: 0;
+  flex: 1 1 auto;
+}
+.history-header .ghost-button {
+  position: static !important;
+  margin-left: auto !important;
+  right: auto !important;
+  top: auto !important;
+  transform: none !important;
+}
+
+/* 2) Lisibilité période : label au-dessus du badge */
+.meta-grid .label-period {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+  color: #374151;
+}
+.meta-grid .label-period + span {
+  display: block !important;
+  text-align: center;
+}
+
+
+/* ===== Responsive tables (History) ===== */
+@media (max-width: 640px){
+  .history-table, .history-table thead, .history-table tbody, .history-table th, .history-table td, .history-table tr{
+    display:block;
+    width:100%;
+  }
+  .history-table thead{ display:none; }
+  .history-table tr{
+    margin: 0 0 12px 0;
+    border:1px solid var(--border);
+    border-radius:12px;
+    overflow:hidden;
+    background:#fff;
+  }
+  .history-table td{
+    border:none;
+    border-bottom:1px solid #eef2f7;
+    padding:10px 14px;
+    text-align:left;
+    white-space:normal;
+    word-break:break-word;
+  }
+  .history-table td:last-child{ border-bottom:none; }
+  .history-table td::before{
+    content: attr(data-label);
+    display:block;
+    font-size:12px;
+    color:#6b7280;
+    margin-bottom:4px;
+    text-transform:none;
+  }
+}
+
+/* ===== Tooltip: prevent overflow on narrow screens ===== */
+@media (max-width: 640px){
+  .res-title .info-wrap .tooltip{
+    left:0;
+    right:auto;
+    top:100%;
+    transform: translate(0,8px);
+    max-width: calc(100vw - 24px);
+    white-space: normal;     /* allow wrapping fully on very small screens */
+    overflow-wrap: anywhere; /* last resort to wrap long words */
+  }
+}
+
+
+/* === Mobile fixes for checklist tooltip overflow === */
+@media (max-width: 640px){
+  /* Make sure parents don't clip the tooltip */
+  .card, .result-row { overflow: visible; }
+
+  /* Keep the title and info icon aligned */
+  .result-row .res-title{ 
+    display:flex; 
+    align-items:center; 
+    gap:8px; 
+    flex-wrap:wrap; 
+  }
+
+  .res-title .info-icon{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:18px;
+    height:18px;
+    border-radius:999px;
+    background:#eef2ff;
+    color:#1f2937;
+    font-size:12px;
+    line-height:1;
+  }
+
+  /* Tooltip: center under the icon, keep inside viewport */
+  .info-wrap{ position: relative; }
+  .info-wrap .tooltip{
+    position: absolute;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    top: calc(100% + 10px) !important;
+
+    max-width: min(92vw, 380px);
+    width: max-content;
+    white-space: normal;         /* allow wrapping */
+    overflow-wrap: anywhere;     /* avoid overflow on long words */
+    z-index: 9999;
+
+    padding: 12px 14px;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+  }
+
+  /* Optional: a little arrow pointing up */
+  .info-wrap .tooltip::before{
+    content:"";
+    position:absolute;
+    top:-6px;
+    left:50%;
+    transform:translateX(-50%);
+    border-left:6px solid transparent;
+    border-right:6px solid transparent;
+    border-bottom:6px solid rgba(0,0,0,0.8); /* match tooltip background if you use one */
+  }
+}
+
+
+/* === Mobile info sheet === */
 @media (max-width: 640px){
   body.no-scroll{ overflow: hidden; }
-  .sheet-backdrop{ position: fixed; inset: 0; background: rgba(0,0,0,0.4); opacity: 0; transition: opacity .18s ease; z-index: 1000; }
+  .sheet-backdrop{
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    opacity: 0;
+    transition: opacity .18s ease;
+    z-index: 1000;
+  }
   .sheet-backdrop.show{ opacity: 1; }
-  .sheet{ position: fixed; left: 0; right: 0; bottom: 0; max-height: 80vh; background: #0f172a; color: #fff; border-top-left-radius: 16px; border-top-right-radius: 16px; transform: translateY(100%); transition: transform .22s ease; z-index: 1001; display: flex; flex-direction: column; }
+  .sheet{
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-height: 80vh;
+    background: #0f172a; /* dark bg to match tooltip style */
+    color: #fff;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    transform: translateY(100%);
+    transition: transform .22s ease;
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+  }
   .sheet.show{ transform: translateY(0); }
-  .sheet-header{ display:flex; align-items:center; justify-content:space-between; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .sheet-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
   .sheet-title{ font-weight:700; font-size:16px; }
   .sheet-close{ background: transparent; border: 0; font-size:18px; color:#fff; padding:6px 8px; }
   .sheet-body{ padding: 14px 16px; font-size:14px; line-height:1.5; }
   .sheet-body .tip-lines{ white-space: normal; overflow-wrap: anywhere; }
 }
 
-/* Petites animations */
-.card, .result-row { opacity: 0; transform: translateY(6px); animation: fadeInUp .30s ease forwards; }
-@keyframes fadeInUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-button, .ghost-button, .primary-lg { transition: transform .12s ease, background-color .25s ease, box-shadow .25s ease; }
-button:hover, .ghost-button:hover, .primary-lg:hover { transform: translateY(-1px); }
-button:active, .ghost-button:active, .primary-lg:active { transform: translateY(0); }
 
-/* Overlay de chargement */
-.loading-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(15,23,42,.35); backdrop-filter: blur(1px); z-index: 9999; }
-.loading-box { background:#fff; border-radius: 12px; padding: 14px 16px; box-shadow: 0 10px 28px rgba(0,0,0,.15); display:flex; gap:10px; align-items:center; }
+/* === Animations légères et interactivité === */
+.card, .result-row {
+  opacity: 0;
+  transform: translateY(6px);
+  animation: fadeInUp 0.30s ease forwards;
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+button, .ghost-button, .primary-lg, .secondary-lg {
+  transition: transform .12s ease, background-color .25s ease, box-shadow .25s ease;
+}
+button:hover, .ghost-button:hover, .primary-lg:hover, .secondary-lg:hover {
+  transform: translateY(-1px);
+}
+button:active, .ghost-button:active, .primary-lg:active, .secondary-lg:active {
+  transform: translateY(0);
+}
+/* Overlay de chargement (login) */
+.loading-overlay {
+  position: fixed; inset: 0; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(15,23,42,.35); backdrop-filter: blur(1px); z-index: 9999;
+}
+.loading-box {
+  background:#fff; border-radius: 12px; padding: 14px 16px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.15); display:flex; gap:10px; align-items:center;
+}
 .spinner { width:20px; height:20px; border:3px solid #e2e8f0; border-top-color:#0ea5e9; border-radius:50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-text { font-weight:600; color:#0f172a; }
-
-/* === Correction alignement période (labels + badges) === */
-.label-period {
-  display: block;        /* le texte reste au-dessus */
-  margin-bottom: 4px;    /* petit espace avant la date */
-  font-weight: 600;      /* plus lisible */
-}
-
-.input-pill,
-.meta-grid span {
-  margin-top: 2px;       /* espace entre texte et badge */
-}
-
-/* === Correction renforcée alignement période === */
-.label-period {
-  display: block;
-  margin-bottom: 8px;   /* plus grand espace */
-  font-weight: 600;
-}
-
-.input-pill,
-.meta-grid span {
-  margin-top: 6px;      /* espace supplémentaire */
-}
