@@ -134,6 +134,60 @@ function openEmailClient({ to, subject, body }){
   }
 }
 
+
+// ---------------------------
+// Success screen after saving a checklist
+// ---------------------------
+function renderChecklistSuccess(meta, results, categories){
+  appState = APP.DASH; // no specific state, just a neutral view
+  app.innerHTML='';
+  const wrap = el('div',{className:'history-wrap'});
+  const header = el('div',{className:'history-header'});
+  const title = el('h2',{text:`Checklist validée ✅`});
+  const back = el('button',{className:'ghost-button', text:'← Retour au dashboard', on:{click:()=>renderDashboard()}});
+  header.append(title, back);
+  wrap.appendChild(header);
+
+  const card = el('div',{className:'card'});
+  const p = el('p',{text:`La vérification pour « ${selectedStore} » a été enregistrée.`});
+  card.appendChild(p);
+
+  const actions = el('div',{});
+  actions.style.display='flex';
+  actions.style.gap='8px';
+
+  const seeBtn = el('button',{className:'primary-lg', text:'Accéder aux résultats'});
+  seeBtn.addEventListener('click', ()=>{
+    const data = {
+      store: selectedStore,
+      date: meta && meta.date ? meta.date : ymd(new Date()),
+      periode_couverte: meta ? meta.periode : '',
+      verificateur: meta ? meta.who : '',
+      resultats: results || {}
+    };
+    renderHistoryDetail(data);
+  });
+
+  const emailBtn = el('button',{className:'ghost-button', text:'Envoyer les résultats par mail'});
+  emailBtn.addEventListener('click', ()=>{
+    const subject = formatEmailSubject(selectedStore, meta && meta.date ? meta.date : new Date());
+    const body = formatEmailBody({
+      store: selectedStore,
+      date: meta && meta.date ? meta.date : ymd(new Date()),
+      periode: meta ? meta.periode : '',
+      verifier: meta ? meta.who : '',
+      results: results || {},
+      categories
+    });
+    openEmailClient({ subject, body });
+  });
+
+  actions.append(seeBtn, emailBtn);
+  card.appendChild(actions);
+  wrap.appendChild(card);
+  app.appendChild(wrap);
+}
+
 // ---------------------------
 // 4) SUPABASE HELPERS
 // ---------------------------
@@ -390,20 +444,7 @@ async function renderPreCheck(){
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:`Informations avant vérification — ${selectedStore}`});
   const back = el('button',{className:'ghost-button', text:'← Retour', on:{click:()=>renderDashboard()}});
-  const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
-emailBtn.addEventListener('click', ()=>{
-  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
-  const body = formatEmailBody({
-    store: selectedStore,
-    date: (data && data.date) ? data.date : ymd(new Date()),
-    periode: data ? data.periode_couverte : '',
-    verifier: data ? data.verificateur : '',
-    results: data ? (data.resultats || {}) : {},
-    categories
-  });
-  openEmailClient({ subject, body });
-});
-header.append(title, back, emailBtn);
+  header.append(title, back);
 
   const card = el('div',{className:'card pre-card'});
   const grid = el('div',{className:'meta-grid'});
@@ -463,20 +504,7 @@ function renderChecklist(meta){
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:`Checklist — ${selectedStore} (${toFR(meta.date)})`});
   const back = el('button',{className:'ghost-button', text:'← Annuler', on:{click:()=>renderDashboard()}});
-  const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
-emailBtn.addEventListener('click', ()=>{
-  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
-  const body = formatEmailBody({
-    store: selectedStore,
-    date: (data && data.date) ? data.date : ymd(new Date()),
-    periode: data ? data.periode_couverte : '',
-    verifier: data ? data.verificateur : '',
-    results: data ? (data.resultats || {}) : {},
-    categories
-  });
-  openEmailClient({ subject, body });
-});
-header.append(title, back, emailBtn);
+  header.append(title, back);
 
   const form = el('div',{className:'result-list'});
   const activeCats = (categories||[]).filter(c=>c.actif!==false);
@@ -609,23 +637,8 @@ header.append(title, back, emailBtn);
       console.error(err);
       return;
     }
-    const sendNow = confirm(`Vérification enregistrée ✅
-
-Voulez-vous envoyer les résultats par e‑mail maintenant ?`);
-if(sendNow){
-  const subject = formatEmailSubject(selectedStore, meta.date);
-  const body = formatEmailBody({
-    store: selectedStore,
-    date: meta.date,
-    periode: meta.periode,
-    verifier: meta.who,
-    results,
-    categories
-  });
-  openEmailClient({ subject, body });
-}
-renderDashboard();
-  };
+    renderChecklistSuccess(meta, results, categories);
+};
 }
 
 // ---------------------------
@@ -639,20 +652,7 @@ function renderDocs(){
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:'Documents ICC'});
   const back = el('button',{className:'ghost-button', text:'← Retour', on:{click:()=>renderDashboard()}});
-  const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
-emailBtn.addEventListener('click', ()=>{
-  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
-  const body = formatEmailBody({
-    store: selectedStore,
-    date: (data && data.date) ? data.date : ymd(new Date()),
-    periode: data ? data.periode_couverte : '',
-    verifier: data ? data.verificateur : '',
-    results: data ? (data.resultats || {}) : {},
-    categories
-  });
-  openEmailClient({ subject, body });
-});
-header.append(title, back, emailBtn);
+  header.append(title, back);
 
   const list = el('div',{className:'doc-list'});
   if(!DOCS.length){
@@ -686,20 +686,7 @@ async function renderHistoryList(){
   const header = el('div',{className:'history-header'});
   const title = el('h2',{text:`Historique — ${selectedStore}`});
   const back = el('button',{className:'ghost-button', text:'← Retour au dashboard', on:{click:()=>renderDashboard()}});
-  const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
-emailBtn.addEventListener('click', ()=>{
-  const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
-  const body = formatEmailBody({
-    store: selectedStore,
-    date: (data && data.date) ? data.date : ymd(new Date()),
-    periode: data ? data.periode_couverte : '',
-    verifier: data ? data.verificateur : '',
-    results: data ? (data.resultats || {}) : {},
-    categories
-  });
-  openEmailClient({ subject, body });
-});
-header.append(title, back, emailBtn);
+  header.append(title, back);
 
   const { data, error } = await supabase.from('verifications').select('*').eq('boutique_id', selectedStoreId).order('date',{ascending:false});
   if(error){
