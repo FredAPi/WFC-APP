@@ -474,26 +474,11 @@ function renderChecklist(meta){
 
   const form = el('div',{className:'result-list'});
 
-  // Barre de progression (combien de points remplis)
-  const progWrap = el('div',{className:'progress-wrap'});
-  const progLabel = el('div',{className:'progress-label', text:'0% complété'});
-  const prog = el('div',{className:'progress'});
-  const progBar = el('div',{className:'progress-bar'});
-  prog.appendChild(progBar);
-  progWrap.append(progLabel, prog);
-
+  // Prépare la liste des catégories actives et le collecteur de valeurs
   const activeCats = (categories||[]).filter(c=>c.actif!==false);
   const fields = [];
 
-  function updateChecklistProgress(){
-    const total = activeCats.length || 1;
-    const count = fields.reduce((acc,f)=>{ const v=f.get(); return acc + (v && v.status ? 1 : 0); }, 0);
-    const pct = Math.round((count/total)*100);
-    if(progBar){ progBar.style.width = pct + '%'; }
-    if(progLabel){ progLabel.textContent = `${pct}% complété • ${count}/${total}`; }
-  }
-
-  // Petit sélecteur de dates (on peut ajouter plusieurs jours pour une non-conformité)
+  // Sélecteur de dates (une ou plusieurs dates dans la période si "Non conforme")
   function buildDatePickerList(){
     const wrap = el('div',{});
     const list = el('div',{});
@@ -528,11 +513,12 @@ function renderChecklist(meta){
     return { root:wrap, getValues: ()=> Array.from(list.querySelectorAll('select')).map(s=>s.value).filter(Boolean) };
   }
 
+  // Construction des lignes de checklist
   activeCats.forEach(cat=>{
     const row = el('div',{className:'result-row'});
-    const title = el('div',{className:'res-title', text:cat.nom_categorie});
+    const rowTitle = el('div',{className:'res-title', text:cat.nom_categorie});
 
-    // Info-bulle (desktop) / fiche (mobile)
+    // Info-bulle / fiche mobile si description
     if(cat.description){
       const infoWrap = el('span',{className:'info-wrap'});
       const info = el('span',{className:'info-icon', text:'ℹ️'});
@@ -542,7 +528,7 @@ function renderChecklist(meta){
       if(isMobile()){
         info.addEventListener('click', (e)=>{
           e.preventDefault(); e.stopPropagation();
-          const html = `<div class="tip-lines">${(cat.description||'').replace(/\n/g,'<br>')}</div>`;
+          const html = `<div class="tip-lines">${(cat.description||'').replace(/\\n/g,'<br>')}</div>`;
           openInfoSheet(cat.nom_categorie||'Informations', html);
         });
       } else {
@@ -551,7 +537,7 @@ function renderChecklist(meta){
         info.addEventListener('mouseleave', ()=> tip.classList.remove('show'));
         info.addEventListener('click', toggle);
       }
-      title.appendChild(infoWrap);
+      rowTitle.appendChild(infoWrap);
     }
 
     const control = el('div',{}); Object.assign(control.style,{display:'flex', gap:'10px', flexWrap:'wrap'});
@@ -568,13 +554,12 @@ function renderChecklist(meta){
       ok.style.background = s==='done' ? '#f0fff4' : '#fff';
       ko.style.background = s==='error' ? '#fff0f0' : '#fff';
       dateWrap.style.display = s==='error' ? 'block' : 'none';
-      updateChecklistProgress();
     }
     ok.addEventListener('click', ()=>setSel('done'));
     ko.addEventListener('click', ()=>setSel('error'));
 
     control.append(ok, ko, comment, dateWrap);
-    row.append(title, control);
+    row.append(rowTitle, control);
     form.appendChild(row);
 
     fields.push({
@@ -591,7 +576,6 @@ function renderChecklist(meta){
     });
   });
 
-  updateChecklistProgress();
   const bottom = el('div',{}); Object.assign(bottom.style,{display:'flex', gap:'10px', marginTop:'12px'});
   const saveBtn = el('button',{className:'primary-lg', text:'Enregistrer la vérification'});
   bottom.appendChild(saveBtn);
