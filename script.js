@@ -177,12 +177,14 @@ function computeErrorDays(verifs){
       list.forEach(ds=>{
         if(!ds) return;
         const d = new Date(ds);
-        const inRange = (!d1 || !d2) ? true : (d >= d1 && d <= d2);
+        const key = ymd(d);
+        const inRange = (!d1 || !d2) ? true : (key >= ymd(d1) && key <= ymd(d2));
         if(inRange){
-          set.add(ds);
-          const arr = map.get(ds) || [];
+          // Normalisation interne pour la comparaison calendrier: YYYY-MM-DD
+          set.add(key);
+          const arr = map.get(key) || [];
           if(arr.indexOf(v.id)===-1) arr.push(v.id);
-          map.set(ds, arr);
+          map.set(key, arr);
         }
       });
     });
