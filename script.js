@@ -1,37 +1,23 @@
-// NOTE: version commentée pour débutant — mêmes fonctionnalités, petits plus d'accessibilité
+// NOTE: version avec période personnalisée + blocage recouvrement + bouton Imprimer
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
-/* =====================================================
-   WFC APP — logique de l'application
-   -----------------------------------------------------
-   Idée générale : on a UNE page (#app). On affiche dedans
-   différentes "vues" (écrans) : Login, Dashboard, Checklist,
-   Historique, Détail. On passe d'une vue à l'autre en
-   appelant des fonctions (ex: renderLogin(), renderDashboard()).
-   ===================================================== */
-
-// 0) CONFIG SUPABASE (base de données)
 const SUPABASE_URL = 'https://vhgfjnnwhwglirnkvacz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZoZ2Zqbm53aHdnbGlybmt2YWN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ1MjY4ODksImV4cCI6MjA3MDEwMjg4OX0.-JMgOOD6syRvAzBexgUMjxTgNqpH8mhrrDxw0ItmS4w';
-// ⚠️ Clé "anon" = publique, OK pour lecture/écriture contrôlée par règles Supabase.
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// 1) ÉTAT GLOBAL : on mémorise où on est (login, dashboard…) + boutique sélectionnée
 const APP = { LOGIN:'login', DASH:'dash', HIST:'hist', VIEW:'view', PRE:'pre', CHECK:'check' };
 let appState = APP.LOGIN;
 
-let storeList = [];     // liste des boutiques (id, nom, code)
-let categories = [];    // catégories de la checklist
-let selectedStore = ''; // nom boutique choisie
+let storeList = [];
+let categories = [];
+let selectedStore = '';
 let selectedStoreId = null;
 
-const app = document.getElementById('app'); // conteneur principal
+const app = document.getElementById('app');
 
-// 2) PETITES FONCTIONS PRATIQUES (helpers)
 function isMobile(){ return (window.matchMedia && window.matchMedia('(max-width: 640px)').matches); }
 function $(sel, root){ return (root||document).querySelector(sel); }
 function $all(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
-// Crée un élément DOM facilement
 function el(tag, props={}, ...children){
   const n = document.createElement(tag);
   if (props) {
@@ -46,18 +32,22 @@ function el(tag, props={}, ...children){
   return n;
 }
 
-// 3) DATES & PÉRIODES (format FR, calcul des jours d'une période)
+// Dates
 function parseFRDate(str){ const [d,m,y]=str.split('/').map(n=>parseInt(n,10)); return new Date(y,m-1,d); }
-function ymd(d){ const z=new Date(d); z.setHours(12,0,0,0); return z.toISOString().slice(0,10); } // ISO: 2025-08-16
-function toFR(dStr){ const [y,m,d]=dStr.split('-'); return `${d}/${m}/${y}`; }                    // FR: 16/08/2025
-function daysBetween(start,end){ const out=[]; const cur=new Date(start); cur.setHours(12,0,0,0); const e=new Date(end); e.setHours(12,0,0,0); while(cur<=e){ out.push(ymd(cur)); cur.setDate(cur.getDate()+1);} return out; }
+function ymd(d){ const z=new Date(d); z.setHours(12,0,0,0); return z.toISOString().slice(0,10); }
+function toFR(dStr){ const [y,m,d]=dStr.split('-'); return `${d}/${m}/${y}`; }
+function daysBetween(start,end){
+  const out=[];
+  const cur=new Date(start); cur.setHours(12,0,0,0);
+  const e=new Date(end); e.setHours(12,0,0,0);
+  while(cur<=e){ out.push(ymd(cur)); cur.setDate(cur.getDate()+1); }
+  return out;
+}
 function parsePeriodeFR(txt){
   const m=(txt||'').match(/du\s(\d{2}\/\d{2}\/\d{4})\sau\s(\d{2}\/\d{2}\/\d{4})/);
   if(!m) return null;
   return { start: parseFRDate(m[1]), end: parseFRDate(m[2]) };
 }
-
-// 3bis) MODULE EMAIL — prépare un mail avec le récap
 function formatFRDateLong(dStr){
   try{
     const d = new Date(dStr);
@@ -66,6 +56,8 @@ function formatFRDateLong(dStr){
     return s.charAt(0).toUpperCase() + s.slice(1);
   }catch(e){ return dStr; }
 }
+
+// EMAIL
 function formatEmailSubject(storeName, dateISO){ return `WFC — Résultats audit ${storeName} — ${toFR(dateISO)}`; }
 function formatEmailBody({ store, date, periode, verifier, results, categories }){
   const nameById = {}; (categories||[]).forEach(c => nameById[c.id] = c.nom_categorie);
@@ -103,57 +95,49 @@ function openEmailClient({ to, subject, body }){
   try{ window.location.href = mailto; } catch(e){ window.open(mailto, '_blank'); }
 }
 
-// Écran de confirmation après enregistrement de la checklist
-function renderChecklistSuccess(meta, results, categories){
-  appState = APP.DASH;
-  app.innerHTML='';
-  const wrap = el('div',{className:'history-wrap'});
-  const header = el('div',{className:'history-header'});
-  const title = el('h2',{text:`Checklist validée ✅`});
-  const back = el('button',{className:'ghost-button', attrs:{'aria-label':'Retour au dashboard'}, text:'← Retour au dashboard', on:{click:()=>renderDashboard()}});
-  header.append(title, back);
-  wrap.appendChild(header);
+// Impression (nouvelle fenêtre propre)
+function printResultsHTML({ store, date, periode, verifier, results, categories }){
+  const nameById = {}; (categories||[]).forEach(c => nameById[c.id] = c.nom_categorie);
+  const rows = Object.keys(results||{}).map(id=>{
+    const v = results[id]||{};
+    const label = nameById[id] || id;
+    const status = v.status==='done' ? '✅ Conforme' : (v.status==='error' ? '❌ Non conforme' : '—');
+    const list = Array.isArray(v.errorDates) ? v.errorDates : (v.errorDate ? [v.errorDate] : []);
+    const days = list.length ? `<div><strong>Jours concernés :</strong> ${list.map(formatFRDateLong).join(', ')}</div>` : '';
+    const comment = v.comment ? `<div><strong>Commentaire :</strong> ${v.comment}</div>` : '';
+    return `<tr><td style="padding:8px;border:1px solid #e5e7eb;"><strong>${label}</strong>${days}${comment}</td><td style="padding:8px;border:1px solid #e5e7eb;">${status}</td></tr>`;
+  }).join('') || `<tr><td colspan="2" style="padding:8px;border:1px solid #e5e7eb;">(Aucun point coché)</td></tr>`;
 
-  const card = el('div',{className:'card'});
-  const p = el('p',{text:`La vérification pour « ${selectedStore} » a été enregistrée.`});
-  card.appendChild(p);
-
-  const actions = el('div',{});
-  actions.style.display='flex'; actions.style.gap='8px';
-
-  const seeBtn = el('button',{className:'primary-lg', text:'Accéder aux résultats'});
-  seeBtn.addEventListener('click', ()=>{
-    const data = {
-      store: selectedStore,
-      date: meta && meta.date ? meta.date : ymd(new Date()),
-      periode_couverte: meta ? meta.periode : '',
-      verificateur: meta ? meta.who : '',
-      resultats: results || {}
-    };
-    renderHistoryDetail(data);
-  });
-
-  const emailBtn = el('button',{className:'ghost-button', text:'Envoyer les résultats par mail'});
-  emailBtn.addEventListener('click', ()=>{
-    const subject = formatEmailSubject(selectedStore, meta && meta.date ? meta.date : new Date());
-    const body = formatEmailBody({
-      store: selectedStore,
-      date: meta && meta.date ? meta.date : ymd(new Date()),
-      periode: meta ? meta.periode : '',
-      verifier: meta ? meta.who : '',
-      results: results || {},
-      categories
-    });
-    openEmailClient({ subject, body });
-  });
-
-  actions.append(seeBtn, emailBtn);
-  card.appendChild(actions);
-  wrap.appendChild(card);
-  app.appendChild(wrap);
+  const html = `<!doctype html><html lang="fr"><head>
+    <meta charset="utf-8"><title>WFC — Impression</title>
+    <style>
+      body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a;padding:20px}
+      h1{font-size:20px;margin:0 0 12px 0}
+      .meta{margin:0 0 16px 0}
+      table{width:100%;border-collapse:collapse}
+      th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
+      th{background:#f8fafc}
+      @media print{ button{ display:none } }
+    </style>
+  </head><body>
+    <h1>WFC — Résultats d'audit</h1>
+    <div class="meta">
+      <div><strong>Boutique :</strong> ${store}</div>
+      <div><strong>Date d'audit :</strong> ${toFR(date)}</div>
+      ${periode ? `<div><strong>Période couverte :</strong> ${periode}</div>` : ''}
+      ${verifier ? `<div><strong>Vérificateur :</strong> ${verifier}</div>` : ''}
+    </div>
+    <table>
+      <thead><tr><th>Catégorie / Détails</th><th>Statut</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <button onclick="window.print()">Imprimer</button>
+  </body></html>`;
+  const w = window.open('', '_blank');
+  if(w){ w.document.open(); w.document.write(html); w.document.close(); }
 }
 
-// 4) SUPABASE : petites fonctions pour lire/écrire
+// Supabase helpers
 function getStoreId(name){ const f=storeList.find(s=>s.name===name); return f ? f.id : null; }
 function getStoreCode(name){ const f=storeList.find(s=>s.name===name); return f ? f.code : ''; }
 async function fetchStores(){
@@ -169,7 +153,7 @@ async function fetchVerifs(storeId){
   return data||[];
 }
 
-// 5) AGRÉGATIONS pour le calendrier et stats
+// Stats/sets
 function computeCoveredDays(verifs){
   const set=new Set();
   (verifs||[]).forEach(v=>{
@@ -181,7 +165,7 @@ function computeCoveredDays(verifs){
 }
 function computeErrorDays(verifs){
   const set = new Set();
-  const map = new Map(); // date => [verificationId,...]
+  const map = new Map();
   (verifs||[]).forEach(v=>{
     const per = parsePeriodeFR(v.periode_couverte||'');
     const d1 = per ? per.start : null;
@@ -212,7 +196,7 @@ function recurringErrors(verifs){
   return Object.keys(counts).map(id=>({label:nameMap[id]||id, count:counts[id]})).sort((a,b)=>b.count-a.count).slice(0,3);
 }
 
-// 6) FICHE INFO MOBILE (quand on clique sur ℹ️ sur smartphone)
+// Info sheet mobile
 function openInfoSheet(titleText, bodyHtml){
   const backdrop = el('div', {className:'sheet-backdrop'});
   const sheet = el('div', {className:'sheet', html:`
@@ -231,9 +215,7 @@ function openInfoSheet(titleText, bodyHtml){
   requestAnimationFrame(()=>{ backdrop.classList.add('show'); sheet.classList.add('show'); });
 }
 
-// ===== VUES (écrans) =====
-
-// Loader simple (super court) — utilisé à la connexion
+// Loading overlay
 function showLoadingOverlay(text='Connexion…'){
   let ov = document.getElementById('loading-overlay');
   if(!ov){
@@ -253,7 +235,7 @@ function hideLoadingOverlay(){
   if(ov) ov.style.display = 'none';
 }
 
-// LOGIN — choisir la boutique + entrer son code
+// LOGIN
 async function renderLogin(){
   appState=APP.LOGIN; app.innerHTML='';
   if(!storeList.length) await fetchStores();
@@ -278,7 +260,6 @@ async function renderLogin(){
   card.append(avatar,row1,row2,err,btn);
   wrap.appendChild(card); container.appendChild(wrap); app.appendChild(container);
 
-  // active/désactive le bouton selon sélection + code
   function check(){
     const exp = sel.value ? getStoreCode(sel.value) : null;
     const ok = !!sel.value && !!code.value && (code.value===exp);
@@ -287,8 +268,6 @@ async function renderLogin(){
     btn.disabled = !ok;
   }
   sel.addEventListener('change',check); code.addEventListener('input',check);
-
-  // focus direct sur la liste pour aller vite
   setTimeout(()=> sel.focus(), 0);
 
   btn.addEventListener('click', async ()=>{
@@ -299,7 +278,7 @@ async function renderLogin(){
   });
 }
 
-// DASHBOARD — résumé + accès aux actions
+// DASHBOARD
 async function renderDashboard(){
   appState=APP.DASH; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
@@ -313,7 +292,6 @@ async function renderDashboard(){
   const container = el('div',{className:'container'});
   const dash = el('div',{className:'dashboard'});
 
-  // Colonne gauche
   const side = el('aside',{className:'sidebar'});
   side.innerHTML = `<div class="store-name" style="margin-bottom:12px; text-align:center;">${selectedStore.toUpperCase()}</div>`;
   const menu = el('div',{className:'menu'});
@@ -322,7 +300,6 @@ async function renderDashboard(){
   const bBack  = el('button',{className:'ghost-button', text:'Changer de boutique'});
   menu.append(bStart,bHist,bBack); side.appendChild(menu);
 
-  // Zone droite (tuiles + calendrier + historique court)
   const content = el('section',{className:'content'});
   const tAud = el('div',{className:'tile', html:`<h3>Audits réalisés</h3><div class="big">${verifs.length}</div>`});
   const tErr = el('div',{className:'tile', html:`<h3>Erreurs récurrentes</h3>${ errorsTop.length ? '<ul>'+errorsTop.map(e=>`<li>${e.label} — <b>${e.count}</b></li>`).join('')+'</ul>' : '<div>—</div>'}`});
@@ -330,7 +307,6 @@ async function renderDashboard(){
   tDocs.style.cursor='pointer'; tDocs.addEventListener('click', ()=>renderDocs());
   content.append(tAud,tErr,tDocs);
 
-  // Calendrier
   const cal = el('div',{className:'card calendar'});
   const calHead = el('div',{className:'cal-head', html:'<div class="nav"><button class="prev" aria-label="Mois précédent">◀</button><button class="next" aria-label="Mois suivant">▶</button></div><div class="title"></div>'});
   const calBody = el('div');
@@ -338,7 +314,6 @@ async function renderDashboard(){
   const legend = el('div',{className:'calendar-legend', html:'<span class="legend-dot legend-covered"></span> Jour contrôlé <span class="legend-dot legend-error"></span> Erreur détectée'});
   cal.appendChild(legend);
 
-  // Historique court
   const histCard = el('div',{className:'card history', html:'<h3>Historique</h3>'});
   if(!verifs.length){ histCard.innerHTML += '<div>Aucun audit.</div>'; }
   else verifs.slice(0,6).forEach(v=> histCard.appendChild(el('div',{className:'row', text:`${v.date ? toFR(v.date) : '—'} — ${v.verificateur} (${v.periode_couverte||''})`})));
@@ -347,7 +322,6 @@ async function renderDashboard(){
   container.appendChild(dash);
   app.appendChild(container);
 
-  // Rendu du calendrier (simple tableau)
   let y=new Date().getFullYear(), m=new Date().getMonth();
   const title=calHead.querySelector('.title');
   function renderMonth(){
@@ -386,13 +360,12 @@ async function renderDashboard(){
   calHead.querySelector('.next').onclick=()=>{ m++; if(m>11){m=0;y++;} renderMonth(); };
   renderMonth();
 
-  // Actions
   bBack.onclick = ()=>renderLogin();
   bHist.onclick = ()=>renderHistoryList();
   bStart.onclick = ()=>renderPreCheck();
 }
 
-// PRÉ-CHECK — choisir la date, la période calculée et le vérificateur
+// PRE-CHECK (avec période personnalisée)
 async function renderPreCheck(){
   appState=APP.PRE; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
@@ -400,12 +373,12 @@ async function renderPreCheck(){
 
   function badge(text){ return el('span',{text, style:{padding:'8px 12px', background:'#f1f5ff', border:'1px solid #e5e7eb', borderRadius:'999px', fontWeight:'600', fontSize:'14px'}}); }
   const dateISO = ymd(new Date());
-  function computePeriod(iso){
+  function computeDefaultPeriod(iso){
     const d = new Date(iso); const end = new Date(d); end.setDate(end.getDate()-1);
     const start = new Date(end); start.setDate(start.getDate()-6);
     return { startISO: ymd(start), endISO: ymd(end), startFR: toFR(ymd(start)), endFR: toFR(ymd(end)) };
   }
-  let per = computePeriod(dateISO);
+  let per = computeDefaultPeriod(dateISO);
 
   const wrap = el('div',{className:'history-wrap'});
   const header = el('div',{className:'history-header'});
@@ -422,9 +395,32 @@ async function renderPreCheck(){
   const dateInput = el('input',{attrs:{type:'date'}, className:'input-pill'}); dateInput.value=dateISO;
   colDate.appendChild(dateInput); grid.appendChild(colDate);
 
-  // Période (non éditable – affichée en badges)
-  const colFrom = el('div',{}); colFrom.innerHTML = '<div class="label label-period">Période du</div>'; const fromBadge = badge(per.startFR); colFrom.appendChild(fromBadge); grid.appendChild(colFrom);
-  const colTo   = el('div',{}); colTo.innerHTML   = '<div class="label label-period">au</div>';    const toBadgeEl  = badge(per.endFR);   colTo.appendChild(toBadgeEl);    grid.appendChild(colTo);
+  
+  // Choix période : défaut 7j ou personnalisée (1 seul type de champ pour Du/Au)
+  const colMode = el('div',{});
+  colMode.innerHTML = '<div class="label">Période</div>';
+  const modeWrap = el('div', {className:'period-group'});
+  const modeDefault = el('input',{attrs:{type:'radio', name:'periodMode', id:'modeDefault', checked:true}});
+  const modeDefaultLbl = el('label',{attrs:{for:'modeDefault'}, text:'7 jours précédents (défaut)'});
+  const modeCustom  = el('input',{attrs:{type:'radio', name:'periodMode', id:'modeCustom'}});
+  const modeCustomLbl = el('label',{attrs:{for:'modeCustom'}, text:'Personnalisée'});
+  modeWrap.append(modeDefault, modeDefaultLbl, modeCustom, modeCustomLbl);
+  colMode.appendChild(modeWrap); grid.appendChild(colMode);
+
+  // Champs Du / Au (toujours visibles, désactivés en mode défaut)
+  const colFromInp = el('div',{});
+  colFromInp.innerHTML = '<div class="label">Du</div>';
+  const fromInput = el('input',{attrs:{type:'date'}, className:'input-pill'});
+  colFromInp.appendChild(fromInput); grid.appendChild(colFromInp);
+
+  const colToInp = el('div',{});
+  colToInp.innerHTML = '<div class="label">Au</div>';
+  const toInput = el('input',{attrs:{type:'date'}, className:'input-pill'});
+  colToInp.appendChild(toInput); grid.appendChild(colToInp);
+
+  // Help ligne
+  const help = el('div',{className:'help muted', text:"Par défaut : du J-7 à J-1. En personnalisée : choisissez librement, mais le dernier jour doit être avant la date d'audit."});
+  grid.appendChild(help);
 
   // Vérificateur
   const colWho = el('div',{}); colWho.innerHTML = '<div class="label">Vérificateur</div>';
@@ -439,30 +435,94 @@ async function renderPreCheck(){
   wrap.append(header, card);
   app.appendChild(wrap);
 
-  // Bouton actif seulement quand le prénom est rempli
-  function updateBtn(){ startBtn.disabled = !whoInput.value.trim(); }
-  whoInput.addEventListener('input', updateBtn); updateBtn();
+  // Fonctions UI
+  function updateBtn(){
+    const whoOk = !!whoInput.value.trim();
+    let perOk = true;
+    const audit = dateInput.value;
+    if(modeCustom.checked){
+      if(!fromInput.value || !toInput.value){ perOk=false; }
+      else{
+        if(toInput.value >= audit){ perOk=false; }
+        if(fromInput.value > toInput.value){ perOk=false; }
+      }
+    }
+    startBtn.disabled = !(whoOk && perOk);
+    help.classList.toggle('error', !perOk);
+  }
+  whoInput.addEventListener('input', updateBtn);
 
-  // Recalcule la période si on change la date
-  dateInput.addEventListener('change', ()=>{ per = computePeriod(dateInput.value); fromBadge.textContent=per.startFR; toBadgeEl.textContent=per.endFR; });
+  function syncDefaultPeriod(){ per = computeDefaultPeriod(dateInput.value); fromInput.value = per.startISO; toInput.value = per.endISO; toInput.max = per.endISO; updateBtn(); }
+  dateInput.addEventListener('change', ()=>{
+    syncDefaultPeriod(); fromInput.disabled = true; toInput.disabled = true;
+    // contraindre les bornes max pour inputs custom
+    toInput.max = ymd(new Date(new Date(dateInput.value).setDate(new Date(dateInput.value).getDate()-1)));
+  });
+  syncDefaultPeriod(); fromInput.disabled = true; toInput.disabled = true;
 
+  modeDefault.addEventListener('change', ()=>{
+    if(modeDefault.checked){
+      // désactive la saisie, fixe la période auto
+      fromInput.disabled = true; toInput.disabled = true;
+      syncDefaultPeriod(); fromInput.disabled = true; toInput.disabled = true;
+      updateBtn();
+    }
+  });
+  modeCustom.addEventListener('change', ()=>{
+    if(modeCustom.checked){
+      fromInput.disabled = false; toInput.disabled = false;
+      // bornes de sécurité
+      const audit = dateInput.value;
+      const def = computeDefaultPeriod(audit);
+      fromInput.value = def.startISO;
+      toInput.value = def.endISO;
+      toInput.max = def.endISO;
+      updateBtn();
+    }
+  });
+  fromInput.addEventListener('change', updateBtn);
+  toInput.addEventListener('change', updateBtn);
+
+  // Démarrage checklist avec vérif de collision période
   startBtn.onclick = async ()=>{
     const d = dateInput.value; const who = whoInput.value.trim();
     if(!d || !who){ alert('Merci de renseigner la date et le prénom.'); return; }
 
-    // Empêche les doublons pour la même date
+    // Pas de doublon sur la même date d'audit (comportement actuel conservé)
     const { data:existing } = await supabase.from('verifications').select('id').eq('boutique_id', selectedStoreId).eq('date', d).maybeSingle();
     if(existing){
       if(confirm('Une vérification existe déjà pour cette date. Voulez-vous consulter le détail ?')) return renderHistoryDetail(existing.id);
       return;
     }
-    const periode = `du ${per.startFR} au ${per.endFR}`;
-    const meta = { date:d, from: per.startISO, to: per.endISO, who, periode };
+
+    // Détermination de la période choisie
+    let fromISO, toISO;
+    if(modeCustom.checked){
+      fromISO = fromInput.value;
+      toISO   = toInput.value;
+    } else {
+      fromISO = per.startISO;
+      toISO   = per.endISO;
+    }
+    const periodeText = `du ${toFR(fromISO)} au ${toFR(toISO)}`;
+
+    // Récupère jours déjà couverts et vérifie recouvrement
+    const verifs = await fetchVerifs(selectedStoreId);
+    const covered = computeCoveredDays(verifs); // set de YYYY-MM-DD
+    const candidateDays = daysBetween(new Date(fromISO), new Date(toISO));
+
+    const conflict = candidateDays.find(ds => covered.has(ds));
+    if(conflict){
+      alert(`Impossible : le jour ${toFR(conflict)} a déjà été contrôlé dans une période précédente. Merci de choisir une autre période.`);
+      return;
+    }
+
+    const meta = { date:d, from: fromISO, to: toISO, who, periode: periodeText };
     renderChecklist(meta);
   };
 }
 
-// CHECKLIST — on coche Conforme / Non conforme + commentaires
+// CHECKLIST
 function renderChecklist(meta){
   appState=APP.CHECK; app.innerHTML='';
 
@@ -474,11 +534,9 @@ function renderChecklist(meta){
 
   const form = el('div',{className:'result-list'});
 
-  // Prépare la liste des catégories actives et le collecteur de valeurs
   const activeCats = (categories||[]).filter(c=>c.actif!==false);
   const fields = [];
 
-  // Sélecteur de dates (une ou plusieurs dates dans la période si "Non conforme")
   function buildDatePickerList(){
     const wrap = el('div',{});
     const list = el('div',{});
@@ -513,12 +571,10 @@ function renderChecklist(meta){
     return { root:wrap, getValues: ()=> Array.from(list.querySelectorAll('select')).map(s=>s.value).filter(Boolean) };
   }
 
-  // Construction des lignes de checklist
   activeCats.forEach(cat=>{
     const row = el('div',{className:'result-row'});
     const rowTitle = el('div',{className:'res-title', text:cat.nom_categorie});
 
-    // Info-bulle / fiche mobile si description
     if(cat.description){
       const infoWrap = el('span',{className:'info-wrap'});
       const info = el('span',{className:'info-icon', text:'ℹ️'});
@@ -528,7 +584,7 @@ function renderChecklist(meta){
       if(isMobile()){
         info.addEventListener('click', (e)=>{
           e.preventDefault(); e.stopPropagation();
-          const html = `<div class="tip-lines">${(cat.description||'').replace(/\\n/g,'<br>')}</div>`;
+          const html = `<div class="tip-lines">${(cat.description||'').replace(/\n/g,'<br>')}</div>`;
           openInfoSheet(cat.nom_categorie||'Informations', html);
         });
       } else {
@@ -583,7 +639,6 @@ function renderChecklist(meta){
   wrap.append(header, form, bottom);
   app.appendChild(wrap);
 
-  // Enregistrement via une Function Supabase (évite d'exposer la table ici)
   saveBtn.onclick = async ()=>{
     const results = {}; fields.forEach(f=>{ const v=f.get(); if(v.status) results[f.id]=v; });
     if(Object.keys(results).length===0 && !confirm('Aucun point coché. Enregistrer quand même ?')) return;
@@ -610,7 +665,69 @@ function renderChecklist(meta){
   };
 }
 
-// DOCUMENTS — simple liste de liens
+// Confirmation + actions (ajout bouton Imprimer)
+function renderChecklistSuccess(meta, results, categories){
+  appState = APP.DASH;
+  app.innerHTML='';
+  const wrap = el('div',{className:'history-wrap'});
+  const header = el('div',{className:'history-header'});
+  const title = el('h2',{text:`Checklist validée ✅`});
+  const back = el('button',{className:'ghost-button', attrs:{'aria-label':'Retour au dashboard'}, text:'← Retour au dashboard', on:{click:()=>renderDashboard()}});
+  header.append(title, back);
+  wrap.appendChild(header);
+
+  const card = el('div',{className:'card'});
+  const p = el('p',{text:`La vérification pour « ${selectedStore} » a été enregistrée.`});
+  card.appendChild(p);
+
+  const actions = el('div',{});
+  actions.style.display='flex'; actions.style.gap='8px';
+
+  const seeBtn = el('button',{className:'primary-lg', text:'Accéder aux résultats'});
+  seeBtn.addEventListener('click', ()=>{
+    const data = {
+      store: selectedStore,
+      date: meta && meta.date ? meta.date : ymd(new Date()),
+      periode_couverte: meta ? meta.periode : '',
+      verificateur: meta ? meta.who : '',
+      resultats: results || {}
+    };
+    renderHistoryDetail(data);
+  });
+
+  const emailBtn = el('button',{className:'ghost-button', text:'Envoyer les résultats par mail'});
+  emailBtn.addEventListener('click', ()=>{
+    const subject = formatEmailSubject(selectedStore, meta && meta.date ? meta.date : ymd(new Date()));
+    const body = formatEmailBody({
+      store: selectedStore,
+      date: meta && meta.date ? meta.date : ymd(new Date()),
+      periode: meta ? meta.periode : '',
+      verifier: meta ? meta.who : '',
+      results: results || {},
+      categories
+    });
+    openEmailClient({ subject, body });
+  });
+
+  const printBtn = el('button',{className:'ghost-button', text:'🖨️ Imprimer'});
+  printBtn.addEventListener('click', ()=>{
+    printResultsHTML({
+      store: selectedStore,
+      date: meta && meta.date ? meta.date : ymd(new Date()),
+      periode: meta ? meta.periode : '',
+      verifier: meta ? meta.who : '',
+      results: results || {},
+      categories
+    });
+  });
+
+  actions.append(seeBtn, emailBtn, printBtn);
+  card.appendChild(actions);
+  wrap.appendChild(card);
+  app.appendChild(wrap);
+}
+
+// DOCUMENTS
 const DOCS = (window.DOCS || []);
 function renderDocs(){
   appState=APP.VIEW; app.innerHTML='';
@@ -682,14 +799,13 @@ async function renderHistoryList(){
   app.appendChild(wrap);
 }
 
-// HISTORIQUE — détail
+// HISTORIQUE — détail (ajout bouton Imprimer)
 async function renderHistoryDetail(verification){
   appState=APP.VIEW; app.innerHTML='';
   if(!selectedStoreId) return renderLogin();
 
   let data = null; let error = null;
   if (verification && typeof verification === 'object' && !Array.isArray(verification)) {
-    // On a reçu directement l'objet résultat -> pas besoin d'appeler Supabase
     data = verification;
   } else {
     const res = await supabase.from('verifications').select('*').eq('id', verification).single();
@@ -702,7 +818,7 @@ async function renderHistoryDetail(verification){
   const back = el('button',{className:'ghost-button', text:"← Retour à l'historique", on:{click:()=>renderHistoryList()}});
   const emailBtn = el('button',{className:'ghost-button', text:'✉️ Envoyer par mail'});
   emailBtn.addEventListener('click', ()=>{
-    const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : new Date());
+    const subject = formatEmailSubject(selectedStore, (data && data.date) ? data.date : ymd(new Date()));
     const body = formatEmailBody({
       store: selectedStore,
       date: (data && data.date) ? data.date : ymd(new Date()),
@@ -713,7 +829,20 @@ async function renderHistoryDetail(verification){
     });
     openEmailClient({ subject, body });
   });
-  header.append(title, back, emailBtn);
+
+  const printBtn = el('button',{className:'ghost-button', text:'🖨️ Imprimer'});
+  printBtn.addEventListener('click', ()=>{
+    printResultsHTML({
+      store: selectedStore,
+      date: (data && data.date) ? data.date : ymd(new Date()),
+      periode: data ? data.periode_couverte : '',
+      verifier: data ? data.verificateur : '',
+      results: data ? (data.resultats || {}) : {},
+      categories
+    });
+  });
+
+  header.append(title, back, emailBtn, printBtn);
 
   if(error || !data){
     wrap.append(header, el('div',{text:'Impossible de charger le détail.'}));
@@ -746,7 +875,6 @@ async function renderHistoryDetail(verification){
       if (val && val.status === 'done')  badge = '✅ Conforme';
       else if (val && val.status === 'error') badge = '❌ Non conforme';
 
-      // dates d'erreur (multi)
       let dateInfo = '';
       if(val && val.status==='error'){
         const listDates = Array.isArray(val.errorDates) ? val.errorDates : (val.errorDate ? [val.errorDate] : []);
@@ -770,6 +898,6 @@ async function renderHistoryDetail(verification){
   app.appendChild(wrap);
 }
 
-// DÉMARRAGE
+// INIT
 async function init(){ try{ await renderLogin(); }catch(e){ console.error(e);} }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init); else init();
