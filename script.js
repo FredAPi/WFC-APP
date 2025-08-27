@@ -191,11 +191,31 @@ function computeErrorDays(verifs){
   });
   return { set, map };
 }
+
+// ✅ Top 3 erreurs récurrentes sur les 3 derniers audits
 function recurringErrors(verifs){
-  const counts={};
-  verifs.forEach(v=>{ const r=v.resultats||{}; Object.keys(r).forEach(cat=>{ if(r[cat] && r[cat].status==='error') counts[cat]=(counts[cat]||0)+1; }); });
-  const nameMap={}; (categories||[]).forEach(c=>nameMap[c.id]=c.nom_categorie);
-  return Object.keys(counts).map(id=>({label:nameMap[id]||id, count:counts[id]})).sort((a,b)=>b.count-a.count).slice(0,3);
+  // On garde seulement les 3 audits les plus récents
+  const last3 = (verifs || []).slice(0, 3);
+
+  const counts = {};
+  last3.forEach(v=>{
+    const r = v.resultats || {};
+    Object.keys(r).forEach(cat=>{
+      if(r[cat] && r[cat].status === 'error'){
+        counts[cat] = (counts[cat] || 0) + 1;
+      }
+    });
+  });
+
+  // Associer les noms lisibles des catégories
+  const nameMap = {};
+  (categories || []).forEach(c => nameMap[c.id] = c.nom_categorie);
+
+  // Retourner le top 3 trié par fréquence
+  return Object.keys(counts)
+    .map(id => ({ label: nameMap[id] || id, count: counts[id] }))
+    .sort((a,b)=> b.count - a.count)
+    .slice(0,3);
 }
 
 // Info sheet mobile
@@ -586,7 +606,7 @@ function renderChecklist(meta){
       if(isMobile()){
         info.addEventListener('click', (e)=>{
           e.preventDefault(); e.stopPropagation();
-          const html = `<div class="tip-lines">${(cat.description||'').replace(/\n/g,'<br>')}</div>`;
+          const html = `<div class="tip-lines">${(cat.description||'').replace(/\\n/g,'<br>')}</div>`;
           openInfoSheet(cat.nom_categorie||'Informations', html);
         });
       } else {
